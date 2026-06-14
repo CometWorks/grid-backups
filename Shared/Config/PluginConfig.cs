@@ -28,7 +28,6 @@ public class PluginConfig : IPluginConfig
     }
 
     private bool enabled = true;
-    private bool detectCodeChanges = true;
     // TODO: Implement your config fields here
     // The default values here will apply to Client and Dedicated.
     // The default values for Torch are defined in TorchPlugin.
@@ -37,12 +36,6 @@ public class PluginConfig : IPluginConfig
     {
         get => enabled;
         set => SetValue(ref enabled, value);
-    }
-
-    public bool DetectCodeChanges
-    {
-        get => detectCodeChanges;
-        set => SetValue(ref detectCodeChanges, value);
     }
 
     // TODO: Encapsulate your config fields as properties here
