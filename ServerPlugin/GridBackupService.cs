@@ -498,11 +498,39 @@ public sealed partial class GridBackupService
         if (string.IsNullOrWhiteSpace(value))
             return fallback;
 
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = value.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray();
-        var sanitized = new string(chars);
+        const int maxSegmentLength = 120;
+        const string windowsInvalid = "<>:\"/\\|?*";
+
+        var platformInvalid = Path.GetInvalidFileNameChars();
+        var chars = value
+            .Trim()
+            .Select(c => char.IsControl(c) || windowsInvalid.IndexOf(c) >= 0 || platformInvalid.Contains(c) ? '_' : c)
+            .ToArray();
+        var sanitized = new string(chars).TrimEnd(' ', '.');
+        if (IsWindowsReservedName(sanitized))
+            sanitized = "_" + sanitized;
+        if (sanitized.Length > maxSegmentLength)
+            sanitized = sanitized.Substring(0, maxSegmentLength).TrimEnd(' ', '.');
+
         return string.IsNullOrWhiteSpace(sanitized) ? fallback : sanitized;
     }
+
+    private static bool IsWindowsReservedName(string value)
+    {
+        var name = value.Split('.')[0];
+        return string.Equals(name, "CON", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "PRN", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "AUX", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "NUL", StringComparison.OrdinalIgnoreCase) ||
+               IsReservedDeviceName(name, "COM") ||
+               IsReservedDeviceName(name, "LPT");
+    }
+
+    private static bool IsReservedDeviceName(string value, string prefix)
+        => value.Length == 4 &&
+           value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+           value[3] >= '1' &&
+           value[3] <= '9';
 
     private sealed class GridState
     {

@@ -440,11 +440,19 @@ public partial class GridBackupService
         var lastUnderscore = name.LastIndexOf('_');
         var gridName = lastUnderscore < 0 ? name : name.Substring(0, lastUnderscore);
         var entityId = lastUnderscore < 0 ? string.Empty : name.Substring(lastUnderscore + 1);
-        var regex = "^" + Regex.Escape(gridNameOrEntityId).Replace("\\?", ".").Replace("\\*", ".*") + "$";
+        var regex = WildcardRegex(gridNameOrEntityId);
+        var sanitized = SanitizeSegment(gridNameOrEntityId, gridNameOrEntityId);
 
-        return Regex.IsMatch(entityId, regex, RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(gridName, regex, RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(name, regex, RegexOptions.IgnoreCase);
+        return Matches(regex) ||
+               (!string.Equals(sanitized, gridNameOrEntityId, StringComparison.Ordinal) && Matches(WildcardRegex(sanitized)));
+
+        bool Matches(string pattern)
+            => Regex.IsMatch(entityId, pattern, RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(gridName, pattern, RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(name, pattern, RegexOptions.IgnoreCase);
+
+        static string WildcardRegex(string value)
+            => "^" + Regex.Escape(value).Replace("\\?", ".").Replace("\\*", ".*") + "$";
     }
 
     private static void MoveBuildersNearPosition(IReadOnlyList<MyObjectBuilder_CubeGrid> builders, Vector3D spawnPosition)
