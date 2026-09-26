@@ -2,7 +2,21 @@
 
 Magnetar server plugin for Space Engineers dedicated servers.
 
-GridBackups exports ship/station grid blueprints on configurable backup triggers and keeps them in a shared Quasar data folder by default, so backups are not tied to one managed Magnetar instance.
+GridBackups exports ship/station grid blueprints on configurable backup triggers.
+Standalone servers keep backups in the Quasar data folder by default.
+
+In a cluster, the plugin automatically uses `PluginStorage.GetSharedDirectory`
+regardless of `UseQuasarConfigFolder`. Each node backs up the grids it sees into
+the same plugin directory. Writes use temporary files and atomic rename;
+per-grid file locks coordinate daily backups and retention across nodes. Normal
+backup filenames include a unique suffix to avoid collisions across Hosts.
+An automatic backup is counted only after its file is written successfully;
+failed writes can be retried on the next scan.
+The shared filesystem must support advisory file locks and atomic rename.
+Quasar sets `CLUSTER_SHARED_ROOT` automatically for a single Host. A cluster on
+several Hosts needs one shared filesystem mounted at the same path on each;
+Quasar does not provision that mount. Without the shared root, the plugin fails
+to load instead of writing separate per-Host backups.
 
 ## Configuration
 
@@ -10,7 +24,7 @@ The server plugin uses Magnetar `PluginSdk` configuration. Quasar can render the
 
 Important options:
 
-- Storage root defaults to the Quasar data folder (`QUASAR_DATA_DIR`, derived from `QUASAR_DS_CONFIG_PATH`, or the platform default Quasar config directory).
+- Standalone storage root defaults to the Quasar data folder (`QUASAR_DATA_DIR`, derived from `QUASAR_DS_CONFIG_PATH`, or the platform default Quasar config directory). Cluster storage uses the SDK shared root.
 - Minimum and maximum minutes since last backup.
 - Backup before concealment via public plugin entrypoint.
 - Backup when steady after a configured unchanged block-count duration.

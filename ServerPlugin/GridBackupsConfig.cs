@@ -15,7 +15,7 @@ public class GridBackupsConfig : PluginConfig
     [BoolOption("Enable automatic grid backups", Parent = "storage")]
     public bool Enabled { get; set => SetField(ref field, value); } = true;
 
-    [BoolOption("Store backups under the shared Quasar config folder instead of one Magnetar instance", Parent = "storage")]
+    [BoolOption("For standalone servers, store backups under the Quasar config folder. Clusters always use PluginSdk shared storage.", Parent = "storage")]
     public bool UseQuasarConfigFolder { get; set => SetField(ref field, value); } = true;
 
     [StringOption(maxLength: 128, pattern: @"^[A-Za-z0-9_. -]+$", description: "Folder name below the selected storage root", Parent = "storage")]
