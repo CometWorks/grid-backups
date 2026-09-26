@@ -310,7 +310,7 @@ public partial class GridBackupService
             return Array.Empty<BackupFileEntry>();
 
         var files = grid.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
-            .OrderByDescending(file => file.CreationTimeUtc)
+            .OrderByDescending(file => file.LastWriteTimeUtc)
             .Select((file, index) => new BackupFileEntry
             {
                 Index = index + 1,
@@ -337,7 +337,7 @@ public partial class GridBackupService
             return RestoreBackupResult.Fail("Grid not found.");
 
         var file = grid.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
-            .OrderByDescending(candidate => candidate.CreationTimeUtc)
+            .OrderByDescending(candidate => candidate.LastWriteTimeUtc)
             .Skip(backupNumber - 1)
             .FirstOrDefault();
         if (file == null)
@@ -378,7 +378,7 @@ public partial class GridBackupService
             foreach (var dir in new DirectoryInfo(ownerPath).GetDirectories("*", SearchOption.TopDirectoryOnly))
             {
                 var latest = dir.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
-                    .OrderByDescending(file => file.CreationTimeUtc)
+                    .OrderByDescending(file => file.LastWriteTimeUtc)
                     .FirstOrDefault();
                 if (latest == null)
                     continue;
@@ -388,7 +388,7 @@ public partial class GridBackupService
                     OwnerIdentityId = ownerId,
                     OwnerName = GetOwnerDisplayName(ownerId),
                     GridFolderName = dir.Name,
-                    LatestBackupLocal = latest.CreationTime,
+                    LatestBackupLocal = latest.LastWriteTime,
                     Directory = dir,
                 };
             }

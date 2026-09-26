@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using PluginSdk.Clustering;
+using PluginSdk.Storage;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.Game.World;
@@ -18,8 +22,11 @@ namespace ServerPlugin;
 public sealed partial class GridBackupService
 {
     private const string DailyPrefix = "daily";
+    private const string PluginId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
     private readonly Plugin plugin;
     private readonly object stateLock = new object();
+    private readonly ConcurrentDictionary<string, object> gridLocks = new ConcurrentDictionary<string, object>();
+    private readonly ConcurrentDictionary<long, byte> queuedGrids = new ConcurrentDictionary<long, byte>();
     private readonly Dictionary<long, GridState> states = new Dictionary<long, GridState>();
     private DateTime nextScanUtc = DateTime.MinValue;
     private int runningBackups;
@@ -36,7 +43,9 @@ public sealed partial class GridBackupService
     {
         get
         {
-            var root = Config.UseQuasarConfigFolder
+            var root = PluginCluster.IsClusterProcess
+                ? PluginStorage.GetSharedDirectory(PluginId)
+                : Config.UseQuasarConfigFolder
                 ? ResolveQuasarConfigRoot()
                 : plugin.PluginDataPath;
 
@@ -127,17 +136,7 @@ public sealed partial class GridBackupService
             if (reason == BackupReason.None)
                 continue;
 
-            if (!QueueBackup(group, reason, force: reason == BackupReason.MaxTime))
-                continue;
-
-            lock (stateLock)
-            {
-                if (states.TryGetValue(key, out var state))
-                {
-                    state.LastBackupUtc = now;
-                    state.LastBackupBlockCount = blockCount;
-                }
-            }
+            QueueBackup(group, reason, force: reason == BackupReason.MaxTime);
         }
 
         lock (stateLock)
@@ -179,6 +178,9 @@ public sealed partial class GridBackupService
         if (!force && !MinDelayElapsed(group.PrimaryEntityId))
             return false;
 
+        if (!queuedGrids.TryAdd(group.PrimaryEntityId, 0))
+            return false;
+
         List<MyObjectBuilder_CubeGrid> builders;
         try
         {
@@ -186,6 +188,7 @@ public sealed partial class GridBackupService
         }
         catch (Exception ex)
         {
+            queuedGrids.TryRemove(group.PrimaryEntityId, out _);
             plugin.Log.Error("Failed to collect grid object builders", ex, new { group.PrimaryEntityId });
             return false;
         }
@@ -196,10 +199,11 @@ public sealed partial class GridBackupService
         {
             try
             {
-                BackupBuilders(owner, builders, reason, respectMinDelay: false);
+                BackupBuilders(owner, builders, reason, respectMinDelay: !force);
             }
             finally
             {
+                queuedGrids.TryRemove(group.PrimaryEntityId, out _);
                 Interlocked.Decrement(ref runningBackups);
             }
         });
@@ -227,20 +231,39 @@ public sealed partial class GridBackupService
             var pathForGrid = CreatePathForGrid(pathForPlayer, gridName, primaryEntityId);
             Directory.CreateDirectory(pathForGrid);
 
-            var now = DateTime.Now;
-            if (Config.NumberOfDailyBackupSaves > 0)
+            string filePath;
+            lock (gridLocks.GetOrAdd(pathForGrid, _ => new object()))
+            using (AcquireGridLock(pathForGrid))
             {
-                var dailyPath = Path.Combine(pathForGrid, $"{DailyPrefix}_{now:yyyy_MM_dd}.sbc");
-                if (!File.Exists(dailyPath))
-                    SaveGrid(dailyPath, gridName, builders);
+                if (PluginCluster.IsClusterProcess)
+                {
+                    var latest = new DirectoryInfo(pathForGrid).GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
+                        .Where(file => !file.Name.StartsWith(DailyPrefix + "_", StringComparison.OrdinalIgnoreCase))
+                        .Select(file => file.LastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+                    var elapsed = DateTime.UtcNow - latest;
+                    if (reason == BackupReason.MaxTime
+                        ? Config.MaxMinutesSinceLastSave > 0 && elapsed.TotalMinutes < Config.MaxMinutesSinceLastSave
+                        : respectMinDelay && Config.MinMinutesSinceLastSave > 0
+                          && elapsed.TotalMinutes < Config.MinMinutesSinceLastSave)
+                        return false;
+                }
+
+                var now = DateTime.Now;
+                if (Config.NumberOfDailyBackupSaves > 0)
+                {
+                    var dailyPath = Path.Combine(pathForGrid, $"{DailyPrefix}_{now:yyyy_MM_dd}.sbc");
+                    if (!File.Exists(dailyPath))
+                        SaveGrid(dailyPath, gridName, builders);
+                }
+
+                filePath = Path.Combine(pathForGrid, PluginCluster.IsClusterProcess
+                    ? $"{now:yyyy_MM_dd_HH_mm_ss}_{Guid.NewGuid():N}.sbc"
+                    : $"{now:yyyy_MM_dd_HH_mm_ss}.sbc");
+                if (!SaveGrid(filePath, gridName, builders))
+                    return false;
+
+                CleanUpDirectory(pathForGrid);
             }
-
-            var filePath = Path.Combine(pathForGrid, $"{now:yyyy_MM_dd_HH_mm_ss}.sbc");
-            var saved = SaveGrid(filePath, gridName, builders);
-            if (!saved)
-                return false;
-
-            CleanUpDirectory(pathForGrid);
             CleanupOldBackupsIfDue();
 
             var backupUtc = DateTime.UtcNow;
@@ -377,8 +400,36 @@ public sealed partial class GridBackupService
         var definitions = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_Definitions>();
         definitions.ShipBlueprints = new[] { definition };
 
-        Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-        return MyObjectBuilderSerializerKeen.SerializeXML(filePath, false, definitions);
+        var directory = Path.GetDirectoryName(filePath);
+        Directory.CreateDirectory(directory);
+        var pending = Path.Combine(directory, ".pending");
+        Directory.CreateDirectory(pending);
+        var temporary = Path.Combine(pending, Guid.NewGuid().ToString("N") + ".sbc");
+        try
+        {
+            if (!MyObjectBuilderSerializerKeen.SerializeXML(temporary, false, definitions))
+                return false;
+            try { File.Move(temporary, filePath); }
+            catch (IOException) when (File.Exists(filePath)) { return false; }
+            return true;
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    private static FileStream AcquireGridLock(string directory)
+    {
+        var stream = new FileStream(Path.Combine(directory, ".backup.lock"), FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.ReadWrite);
+        var wait = Stopwatch.StartNew();
+        try
+        {
+            while (true)
+            {
+                try { stream.Lock(0, 1); return stream; }
+                catch (IOException) when (wait.Elapsed < TimeSpan.FromSeconds(5)) { Thread.Sleep(25); }
+            }
+        }
+        catch { stream.Dispose(); throw; }
     }
 
     private string CreatePathForPlayer(string root, long playerId)
@@ -414,7 +465,7 @@ public sealed partial class GridBackupService
     {
         var files = new DirectoryInfo(pathForGrid)
             .GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
-            .OrderByDescending(file => file.CreationTimeUtc)
+            .OrderByDescending(file => file.LastWriteTimeUtc)
             .ToList();
 
         var normalCount = 0;
@@ -449,10 +500,14 @@ public sealed partial class GridBackupService
 
         foreach (var file in new DirectoryInfo(BackupRoot).GetFiles("*.sbc", SearchOption.AllDirectories))
         {
+            if (file.Directory?.Name == ".pending") continue;
             try
             {
-                if (file.CreationTimeUtc < cutoff)
-                    file.Delete();
+                var directory = file.DirectoryName;
+                lock (gridLocks.GetOrAdd(directory, _ => new object()))
+                using (AcquireGridLock(directory))
+                    if (file.Exists && file.LastWriteTimeUtc < cutoff)
+                        file.Delete();
             }
             catch (Exception ex)
             {

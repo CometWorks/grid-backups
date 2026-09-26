@@ -5,7 +5,7 @@
     <Id>9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C</Id>
 
     <!-- GitHub repository ID -->
-    <RepoId>OwendB1/SE-GridBackups</RepoId>
+    <RepoId>CometWorks/grid-backups</RepoId>
 
     <!-- The name of your plugin that will appear in the plugin list -->
     <FriendlyName>GridBackups</FriendlyName>
@@ -20,8 +20,8 @@
     <Description>
         GridBackups is a Magnetar server plugin that exports ship and station grid
         blueprints on configurable triggers — interval, steady-state, change
-        thresholds, and pre-concealment — and stores them in a shared Quasar data
-        folder so backups aren't tied to a single managed Magnetar host.
+        thresholds, and pre-concealment. Standalone backups use Quasar data by
+        default; cluster backups use Magnetar PluginSdk shared storage automatically.
 
         Supports connected-grid grouping, owner-named folders, NPC/nobody filtering,
         retention limits, the !gridbackup chat commands, and an external API for other
