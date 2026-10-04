@@ -61,12 +61,27 @@ Requirements:
 - Magnetar
 - .NET 10 SDK
 - .NET Framework 4.8.1 Developer Pack on Windows
+- Python 3.12 or newer, for `setup.py`
 
 Build:
 
 ```bash
 dotnet build GridBackups.sln --configuration Debug
 ```
+
+`Directory.Build.props` auto-detects the Dedicated Server (`Dedicated64`) and the Magnetar
+installation (`Magnetar`). To override them, set them in `Directory.Build.props.user`, which
+is not committed. `setup.py` writes that file with the auto-detected Dedicated Server folder.
+The plugin version lives in `Version.Build.props`.
+
+## Development and deployment
+
+Load the working copy through a Magnetar development folder: start Magnetar with `-sources`
+and add the repository with the Sources button. Magnetar then compiles the plugin from source.
+
+Builds deploy nothing by default. To copy the build into `<MagnetarData>/Local`, set
+`MagnetarData` (the Magnetar config folder) in `Directory.Build.props.user` or pass
+`-p:MagnetarData=...` to the build.
 
 Functionality is inspired by and reimplements the original Torch plugin
 GridBackup by LordTylus (license: Apache-2.0):

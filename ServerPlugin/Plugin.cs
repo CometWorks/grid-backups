@@ -11,7 +11,7 @@ using VRage.Game;
 using VRage.Plugins;
 
 // Define assembly version when compiled by Magnetar
-#if !DEV_BUILD
+#if !LOCAL_BUILD
 using System.Reflection;
 
 [assembly: AssemblyVersion("1.0.0.0")]
