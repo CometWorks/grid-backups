@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<PluginData
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:type="GitHubPlugin"
+>
+  <!-- Test-only server plugin of the Grid Backups suite, loaded as a dev folder.
+         Never published to a hub. -->
+  <Id>33BB4953-9BFE-49C4-A476-CF0E2BEFCC4C</Id>
+  <RepoId>CometWorks/grid-backups</RepoId>
+  <FriendlyName>Grid Backups Probe</FriendlyName>
+  <Author>CometWorks</Author>
+  <Tooltip>Test hooks for the Grid Backups test suite</Tooltip>
+  <Commit>TODO Git commit hash</Commit>
+</PluginData>

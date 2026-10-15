@@ -83,6 +83,74 @@ Builds deploy nothing by default. To copy the build into `<MagnetarData>/Local`,
 `MagnetarData` (the Magnetar config folder) in `Directory.Build.props.user` or pass
 `-p:MagnetarData=...` to the build.
 
+## Tests
+
+`tests/` holds the plugin's test suite. It runs on Linux only.
+
+`tests/unit` has unit tests of the logic that needs no game: the storage root (Quasar
+data folder, cluster storage), the backup triggers, retention, grid name matching and
+folder names. They build against the Dedicated Server and Magnetar like the plugin does:
+
+```bash
+dotnet test tests/unit
+```
+
+The rest is an in-game suite. It starts a Magnetar server with this working copy of the
+plugin, joins it with two headless game clients and drives them through the
+[Remote plugin](https://github.com/CometWorks/remote): player A is an administrator,
+player B has no rights. The tests run the chat commands and check the backup files, the
+plugin's log and the grids on the server. What it covers:
+
+- Backup triggers: the first scan, the minimum and maximum time since the last backup, a
+  steady block count, a large block count change, and the entry points other plugins call,
+  `BackupBeforeConcealment` among them (`test_triggers.py`)
+- What a backup holds and where it goes: grids joined by a rotor, owner folder names, NPC
+  and nobody grids, the original owners, retention of normal, daily and old backups
+  (`test_contents.py`)
+- The `!gridbackup` commands, their permissions and bad input (`test_commands.py`)
+- Restores: a restored grid matching the backup, near the caller or in place, backup
+  numbers, faction restores, and the occupied-area check (`test_restore.py`)
+- The Quasar data folder from `QUASAR_DATA_DIR`, `QUASAR_DS_CONFIG_PATH` or the home
+  folder, and a broken config file, each on a server of its own (`test_storage.py`)
+- Cluster storage: two servers started as cluster nodes that share one storage root
+  (`nodes.py`), coordinating their backups through it (`test_cluster.py`)
+- Backups, config and listing across a server restart (`test_restart.py`)
+
+Things the plugin doesn't do yet are strict xfails, so a fix shows up as an unexpected
+pass.
+
+The test world is the game's Empty World with the test players, a faction and a row of
+test grids, written fresh for every run. `tests/probe` is a test-only server plugin the
+servers load next to Grid Backups. It puts a new config into the running plugin, moves a
+grid's last backup back in time instead of waiting for minutes to pass, reports the state
+of grids, calls the public entry points, and runs chat commands as the console from a
+file, which is how the tests drive the servers that have no clients.
+
+### Running
+
+You need the Space Engineers client and Dedicated Server from Steam, Magnetar and Pulsar
+installed, [uv](https://docs.astral.sh/uv/), and working copies of
+[Remote](https://github.com/CometWorks/remote) and
+[DirectTransport](https://github.com/CometWorks/direct-transport). The rig takes the
+ports, client ids and folders from a test slot of the `se` workspace
+(`notes/parallel-test-work`), and waits for free memory before each process it starts.
+
+```bash
+uv run pytest
+```
+
+Where GitHub's API rate limits Magnetar, export `PULSAR_GITHUB_TOKEN` for it to download
+its hub plugins with. `tests/rig.py` lists the environment variables that point the rig
+at other installations and working copies.
+
+To keep the server and clients running between runs while you work on a test:
+
+```bash
+uv run python tests/session.py start
+GB_ATTACH=1 GB_KEEP=1 uv run pytest tests/test_commands.py
+uv run python tests/session.py stop
+```
+
 Functionality is inspired by and reimplements the original Torch plugin
 GridBackup by LordTylus (license: Apache-2.0):
 https://github.com/LordTylus/SE-Torch-Plugin-ALE-GridBackup
