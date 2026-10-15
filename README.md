@@ -89,7 +89,8 @@ Builds deploy nothing by default. To copy the build into `<MagnetarData>/Local`,
 
 `tests/unit` has unit tests of the logic that needs no game: the storage root (Quasar
 data folder, the server's data folder, cluster storage), a broken config file, the backup
-triggers, retention, grid name matching and folder names. They build against the Dedicated Server and Magnetar like the plugin does:
+triggers, retention, grid name matching and folder names. They build against the Dedicated
+Server and Magnetar like the plugin does:
 
 ```bash
 dotnet test tests/unit
