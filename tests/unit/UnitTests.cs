@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using PluginSdk.Clustering;
 using PluginSdk.Storage;
 using ServerPlugin;
+using VRage.FileSystem;
 using Xunit;
 
 // The tests change process environment variables
@@ -154,8 +155,11 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(rig.Sub("q", "GridBackups"), rig.Service.BackupRoot);
         rig.Config.BackupFolderName = "Other";
         Assert.Equal(rig.Sub("q", "Other"), rig.Service.BackupRoot);
+        // Off: the server's data folder
+        MyFileSystem.Reset();
+        MyFileSystem.Init(rig.Sub("content"), rig.Sub("ds"));
         rig.Config.UseQuasarConfigFolder = false;
-        Assert.Equal(rig.Sub("data", "Other"), rig.Service.BackupRoot);
+        Assert.Equal(rig.Sub("ds", "Other"), rig.Service.BackupRoot);
     }
 
     [Theory]
@@ -201,6 +205,28 @@ public sealed class StorageTests : IDisposable
     }
 }
 
+public sealed class ConfigFileTests : IDisposable
+{
+    private readonly Rig rig = new();
+
+    public void Dispose() => rig.Dispose();
+
+    [Fact]
+    public void BrokenConfigKept()
+    {
+        const string broken = "<GridBackupsConfig><Enabled>maybe</Enabled>";
+        string path = rig.Sub("broken.cfg");
+        File.WriteAllText(path, broken);
+
+        using var file = SdkConfigFile<GridBackupsConfig>.Load(rig.Plugin.Log, path);
+
+        Assert.True(file.Data.Enabled);
+        string kept = Assert.Single(Directory.GetFiles(rig.Folder, "broken.cfg.corrupted.*.txt"));
+        Assert.Equal(broken, File.ReadAllText(kept));
+        Assert.Contains("<Enabled>true</Enabled>", File.ReadAllText(path));
+    }
+}
+
 public sealed class TriggerTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
@@ -237,7 +263,8 @@ public sealed class TriggerTests : IDisposable
     [Fact]
     public void FirstBackup()
     {
-        // With a max time set, a grid never backed up is past it: MaxTime
+        // Before the max time, which a grid never backed up is always past
+        Assert.Equal("Initial", Reason(null, 0));
         rig.Config.MaxMinutesSinceLastSave = 0;
         Assert.Equal("Initial", Reason(null, 0));
     }

@@ -58,8 +58,10 @@ def test_max_time_forces_a_backup(game):
 
     game.probe("age", TRIGGER.entity_id, 61)
     game.scan()
-    assert len(game.grid_files(TRIGGER)) == 2
-    assert game.reason(game.grid_files(TRIGGER)[0]) == "MaxTime"
+    first, latest = reversed(game.grid_files(TRIGGER))
+    # A first backup is Initial even with a max time set
+    assert game.reason(first) == "Initial"
+    assert game.reason(latest) == "MaxTime"
     assert len(game.grid_files(ALPHA_STATION)) == 1
 
 
@@ -152,3 +154,12 @@ def test_manual_backup_by_another_plugin_ignores_the_min_time(game):
     assert game.probe("external", ALPHA_SHIP.entity_id) == "Probe external: True"
     assert len(game.grid_files(ALPHA_SHIP)) == 2
     assert game.reason(game.grid_files(ALPHA_SHIP)[0]) == "Manual"
+
+
+def test_backups_within_the_same_second(game):
+    # Three backups in well under a second: two of them share the second
+    reply = game.probe("external", ALPHA_SHIP.entity_id, 3)
+    assert reply == "Probe external: True True True"
+    names = [p.name for p in game.grid_files(ALPHA_SHIP)]
+    assert len(names) == 3
+    assert any(n.endswith("_2.sbc") for n in names), names

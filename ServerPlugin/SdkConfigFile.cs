@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Threading;
 using PluginSdk.Config;
 using PluginSdk.Logging;
@@ -35,9 +36,28 @@ public sealed class SdkConfigFile<T> : IDisposable where T : PluginConfig, new()
         catch (Exception ex)
         {
             log.Error("Failed to load config, using defaults", ex, new { path });
+            KeepBrokenFile(log, path);
             var file = new SdkConfigFile<T>(log, path, new T());
             file.Save();
             return file;
+        }
+    }
+
+    // Moved aside, so writing the defaults doesn't lose the admin's settings
+    private static void KeepBrokenFile(Logger log, string path)
+    {
+        if (!File.Exists(path))
+            return;
+
+        var keptPath = $"{path}.corrupted.{DateTime.Now:yyyyMMdd-HHmmss}.txt";
+        try
+        {
+            File.Move(path, keptPath);
+            log.Warning("Moved the broken config aside", new { keptPath });
+        }
+        catch (Exception ex)
+        {
+            log.Error("Failed to move the broken config aside", ex, new { path, keptPath });
         }
     }
 

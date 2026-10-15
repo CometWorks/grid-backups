@@ -443,10 +443,19 @@ public sealed class ProbeCommands : CommandModule
     public string Conceal(long gridId) =>
         "Probe conceal: " + CallEntryPoint("BackupBeforeConcealment", gridId);
 
-    [Command("external", "Calls BackupGridsManuallyWithBuilders with a grid's group.")]
+    [Command(
+        "external",
+        "Calls BackupGridsManuallyWithBuilders with a grid's group, `times` times in a row."
+    )]
     [Permission(MyPromoteLevel.Admin)]
-    public string External(long gridId) =>
-        "Probe external: " + CallEntryPoint("BackupGridsManuallyWithBuilders", gridId);
+    public string External(long gridId, int times = 1) =>
+        "Probe external: "
+        + string.Join(
+            " ",
+            Enumerable
+                .Range(0, times)
+                .Select(_ => CallEntryPoint("BackupGridsManuallyWithBuilders", gridId))
+        );
 
     // --- players --------------------------------------------------------------
 
