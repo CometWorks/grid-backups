@@ -139,7 +139,8 @@ uv run pytest
 ```
 
 Where GitHub's API rate limits Magnetar, export `PULSAR_GITHUB_TOKEN` for it to download
-its hub plugins with. `tests/rig.py` lists the environment variables that point the rig
+its hub plugins with. A full run takes about 40 minutes, most of it starting servers;
+`dotnet test tests/unit` takes seconds. `tests/rig.py` lists the environment variables that point the rig
 at other installations and working copies.
 
 To keep the server and clients running between runs while you work on a test:

@@ -135,6 +135,16 @@ def start_process(
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
+    # Until the child has exec'd, its command line is ours, and _alive would
+    # take it for dead
+    own = Path("/proc/self/cmdline").read_bytes()
+    while process.poll() is None:
+        try:
+            if Path(f"/proc/{process.pid}/cmdline").read_bytes() != own:
+                break
+        except OSError:
+            pass
+        time.sleep(0.05)
     pid_file.write_text(str(process.pid))
 
 
