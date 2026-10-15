@@ -5,9 +5,9 @@ and the entry points other plugins call.
 The tests scan on demand (`Game.scan`) and move a grid's last backup back in
 time with the probe instead of waiting for minutes to pass.
 
-Concealment is meant to call BackupBeforeConcealment before it conceals a grid,
-but never does (SE1-0198, a strict xfail in the Concealment suite). Here the
-probe calls the entry point the way Concealment would.
+Concealment 1.1.0 and later call BackupBeforeConcealment before they conceal a
+grid group, and the Concealment suite tests that. Here the probe calls the entry
+point the way Concealment does, so this suite runs without Concealment.
 """
 
 from __future__ import annotations
