@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Unit tests of the plugin's logic that runs without a game: storage paths,
-       backup triggers, retention, name matching and grid folder locks.
+       backup triggers, retention, grid name matching and folder names.
        Directory.Build.props of the repository finds the Dedicated Server and
        Magnetar, the same way the plugin build does. -->
   <PropertyGroup>
@@ -24,7 +24,7 @@
     </Reference>
   </ItemGroup>
 
-  <!-- The game assemblies stay where they are; GameAssemblies.cs loads them from here -->
+  <!-- The game assemblies stay where they are; GameAssemblies in UnitTests.cs loads them from here -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>Dedicated64</_Parameter1>

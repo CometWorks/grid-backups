@@ -116,8 +116,7 @@ plugin's log and the grids on the server. What it covers:
   (`nodes.py`), coordinating their backups through it (`test_cluster.py`)
 - Backups, config and listing across a server restart (`test_restart.py`)
 
-Things the plugin doesn't do yet are strict xfails, so a fix shows up as an unexpected
-pass.
+Things the plugin doesn't do yet are marked as xfails with the ticket that tracks them.
 
 The test world is the game's Empty World with the test players, a faction and a row of
 test grids, written fresh for every run. `tests/probe` is a test-only server plugin the

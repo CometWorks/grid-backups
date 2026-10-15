@@ -4,8 +4,8 @@ client 1 (an administrator) and player B on client 2 (no rights).
 Every test starts from the default plugin config (session.DEFAULT_CONFIG), no
 backups on disk, no backup state in the plugin and only the grids of the
 world; a test changes the config it needs through the probe (`configure`), so
-the server keeps running between tests. Only test_restart.py restarts it, and
-test_cluster.py starts servers of its own.
+the server keeps running between tests. Only test_restart.py restarts it;
+test_cluster.py and test_storage.py start servers of their own.
 
 GB_ATTACH=1 reuses a running server and clients (session.py start), GB_KEEP=1
 leaves them running after the run.
