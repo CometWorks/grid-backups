@@ -365,3 +365,6 @@ MigrationBackup/
 .claude
 
 # Plugin specific
+
+# Test runs
+.venv/
