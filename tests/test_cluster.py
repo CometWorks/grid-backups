@@ -139,7 +139,9 @@ def test_no_backups_without_shared_storage(cluster):
     try:
         node.start()
         reply = node.console("!gridbackup status")
+        assert reply.startswith("GridBackups failed to load: "), reply
         assert "CLUSTER_SHARED_ROOT" in reply, reply
+        assert node.console("!gridbackup run") == reply
         node.probe("flush")
         assert re.search(
             r"\[GridBackups\] .*Failed to load(?! config)", node.game_log()

@@ -119,20 +119,18 @@ def test_backup_folder_name(game):
         shutil.rmtree(root, ignore_errors=True)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SE1-0230: UseQuasarConfigFolder=false still keeps the backups in the Quasar folder",
-)
 def test_storage_outside_the_quasar_folder(game):
+    # Off: the server's data folder
     game.configure(UseQuasarConfigFolder=False)
+    root = game.server.data / "GridBackups"
     try:
-        root = game.console("!gridbackup status").split(",")[0].removeprefix("root=")
-        # Today it is the plugin's data folder, the GridBackups folder in the
-        # Quasar folder, so the backups land one folder deeper
-        assert not root.startswith(str(game.server.quasar))
+        assert game.console("!gridbackup status").startswith(f"root={root},")
+        game.run()
+        assert (root / str(world.PLAYER_A) / ALPHA_STATION.folder).is_dir()
+        assert not game.files()
     finally:
         game.configure()
-        shutil.rmtree(game.server.plugin_dir / "GridBackups", ignore_errors=True)
+        shutil.rmtree(root, ignore_errors=True)
 
 
 # --- list ---------------------------------------------------------------------

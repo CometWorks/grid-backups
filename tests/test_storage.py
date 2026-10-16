@@ -74,9 +74,12 @@ def test_broken_config(servers):
     # The plugin runs on the defaults
     assert status_root(server) == str(root / "GridBackups")
     server.probe("flush")
-    assert "Failed to load config, using defaults" in server.game_log()
-    files = [p.read_text() for p in server.plugin_dir.glob("GridBackups.cfg*")]
-    if broken not in files:
-        pytest.xfail(
-            "SE1-0236: the broken config file is overwritten with the defaults"
-        )
+    log = server.game_log()
+    assert "Failed to load config, using defaults" in log
+    assert "Moved the broken config aside" in log
+    # Kept next to the new config of defaults
+    (kept,) = server.plugin_dir.glob("GridBackups.cfg.corrupted.*.txt")
+    assert kept.read_text() == broken
+    assert (
+        "<Enabled>true</Enabled>" in (server.plugin_dir / "GridBackups.cfg").read_text()
+    )

@@ -11,6 +11,7 @@ using PluginSdk.Storage;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.Game.World;
+using VRage.FileSystem;
 using VRage.Game;
 using VRage.Groups;
 using VRage.ObjectBuilders;
@@ -47,7 +48,7 @@ public sealed partial class GridBackupService
                 ? PluginStorage.GetSharedDirectory(PluginId)
                 : Config.UseQuasarConfigFolder
                 ? ResolveQuasarConfigRoot()
-                : plugin.PluginDataPath;
+                : MyFileSystem.UserDataPath;
 
             var folder = SanitizeSegment(Config.BackupFolderName, "GridBackups");
             var path = Path.Combine(root, folder);
@@ -149,6 +150,9 @@ public sealed partial class GridBackupService
 
     private BackupReason GetBackupReason(GridState state, int blockCount, DateTime now)
     {
+        if (state.LastBackupUtc == DateTime.MinValue)
+            return BackupReason.Initial;
+
         var sinceLast = now - state.LastBackupUtc;
 
         if (Config.MaxMinutesSinceLastSave > 0 && sinceLast.TotalMinutes >= Config.MaxMinutesSinceLastSave)
@@ -156,9 +160,6 @@ public sealed partial class GridBackupService
 
         if (Config.MinMinutesSinceLastSave > 0 && sinceLast.TotalMinutes < Config.MinMinutesSinceLastSave)
             return BackupReason.None;
-
-        if (state.LastBackupUtc == DateTime.MinValue)
-            return BackupReason.Initial;
 
         if (Config.MaxBlockCountChange > 0 &&
             Math.Abs(blockCount - state.LastBackupBlockCount) >= Config.MaxBlockCountChange)
@@ -256,9 +257,13 @@ public sealed partial class GridBackupService
                         SaveGrid(dailyPath, gridName, builders);
                 }
 
-                filePath = Path.Combine(pathForGrid, PluginCluster.IsClusterProcess
-                    ? $"{now:yyyy_MM_dd_HH_mm_ss}_{Guid.NewGuid():N}.sbc"
-                    : $"{now:yyyy_MM_dd_HH_mm_ss}.sbc");
+                var name = PluginCluster.IsClusterProcess
+                    ? $"{now:yyyy_MM_dd_HH_mm_ss}_{Guid.NewGuid():N}"
+                    : $"{now:yyyy_MM_dd_HH_mm_ss}";
+                filePath = Path.Combine(pathForGrid, name + ".sbc");
+                // A second backup within the same second, under the grid lock
+                for (var n = 2; File.Exists(filePath); n++)
+                    filePath = Path.Combine(pathForGrid, $"{name}_{n}.sbc");
                 if (!SaveGrid(filePath, gridName, builders))
                     return false;
 

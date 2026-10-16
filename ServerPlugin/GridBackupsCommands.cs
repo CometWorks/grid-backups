@@ -24,13 +24,17 @@ public sealed class GridBackupsCommands : CommandModule
 {
     private const int MaxListLines = 30;
 
+    private static string NotLoaded => Plugin.Instance?.LoadError is { } error
+        ? $"GridBackups failed to load: {error}"
+        : "GridBackups is not loaded.";
+
     [Command("list", "Lists backed up grids for a player")]
     [Permission(MyPromoteLevel.SpaceMaster)]
     public IEnumerable<string> List(string playerNameOrSteamId, string gridNameOrEntityId = null)
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
-            return Single("GridBackups is not loaded.");
+            return Single(NotLoaded);
 
         if (!TryResolvePlayer(playerNameOrSteamId, out var identityId, out var playerName))
             return Single("Player not found.");
@@ -47,7 +51,7 @@ public sealed class GridBackupsCommands : CommandModule
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
-            return Single("GridBackups is not loaded.");
+            return Single(NotLoaded);
 
         var faction = MySession.Static?.Factions?.TryGetFactionByTag(factionTag);
         if (faction == null)
@@ -66,7 +70,7 @@ public sealed class GridBackupsCommands : CommandModule
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
-            return Single("GridBackups is not loaded.");
+            return Single(NotLoaded);
 
         return FormatGridList(plugin.Backups.FindBackedUpGrids(gridNameOrEntityId), $"Find results for {gridNameOrEntityId}");
     }
@@ -77,7 +81,7 @@ public sealed class GridBackupsCommands : CommandModule
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
-            return "GridBackups is not loaded.";
+            return NotLoaded;
 
         if (!TryResolvePlayer(playerNameOrSteamId, out var identityId, out _))
             return "Player not found.";
@@ -91,7 +95,7 @@ public sealed class GridBackupsCommands : CommandModule
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
-            return "GridBackups is not loaded.";
+            return NotLoaded;
 
         var faction = MySession.Static?.Factions?.TryGetFactionByTag(factionTag);
         if (faction == null)
@@ -105,8 +109,8 @@ public sealed class GridBackupsCommands : CommandModule
     public string Run()
     {
         var plugin = Plugin.Instance;
-        if (plugin == null)
-            return "GridBackups is not loaded.";
+        if (plugin?.Backups == null)
+            return NotLoaded;
 
         return plugin.Backups.StartManualBackup()
             ? "Backup creation started."
@@ -117,8 +121,7 @@ public sealed class GridBackupsCommands : CommandModule
     [Permission(MyPromoteLevel.Admin)]
     public string Status()
     {
-        var plugin = Plugin.Instance;
-        return plugin?.Backups.GetStatus() ?? "GridBackups is not loaded.";
+        return Plugin.Instance?.Backups?.GetStatus() ?? NotLoaded;
     }
 
     private string Restore(Plugin plugin, IEnumerable<long> ownerIds, string gridNameOrEntityId, int backupNumber, bool keepOriginalPosition, bool force)

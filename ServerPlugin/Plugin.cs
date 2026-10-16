@@ -14,8 +14,8 @@ using VRage.Plugins;
 #if !LOCAL_BUILD
 using System.Reflection;
 
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 #endif
 
 namespace ServerPlugin;
@@ -33,6 +33,7 @@ public sealed class Plugin : IPlugin
     public GridBackupsConfig Config => configFile?.Data;
     public GridBackupService Backups { get; private set; }
     public string PluginDataPath { get; private set; }
+    public string LoadError { get; private set; }
 
     private SdkConfigFile<GridBackupsConfig> configFile;
 
@@ -61,6 +62,9 @@ public sealed class Plugin : IPlugin
         catch (Exception ex)
         {
             failed = true;
+            // The commands may be registered already; they answer with this
+            Backups = null;
+            LoadError = ex.Message;
             Log.Critical("Failed to load", ex);
         }
     }

@@ -22,6 +22,11 @@
     <Reference Include="PluginSdk">
       <HintPath>$(MagnetarBinDir)PluginSdk.dll</HintPath>
     </Reference>
+    <!-- MyFileSystem, for the server's data folder -->
+    <Reference Include="VRage.Library">
+      <HintPath>$(Dedicated64Dir)VRage.Library.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- The game assemblies stay where they are; GameAssemblies in UnitTests.cs loads them from here -->
