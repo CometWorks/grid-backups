@@ -6,10 +6,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using PluginSdk.Commands;
 using Sandbox;
+using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
-using Sandbox.Common.ObjectBuilders;
 using VRage;
 using VRage.Game;
 using VRage.Game.ModAPI;
@@ -24,9 +24,10 @@ public sealed class GridBackupsCommands : CommandModule
 {
     private const int MaxListLines = 30;
 
-    private static string NotLoaded => Plugin.Instance?.LoadError is { } error
-        ? $"GridBackups failed to load: {error}"
-        : "GridBackups is not loaded.";
+    private static string NotLoaded =>
+        Plugin.Instance?.LoadError is { } error
+            ? $"GridBackups failed to load: {error}"
+            : "GridBackups is not loaded.";
 
     [Command("list", "Lists backed up grids for a player")]
     [Permission(MyPromoteLevel.SpaceMaster)]
@@ -41,8 +42,14 @@ public sealed class GridBackupsCommands : CommandModule
 
         var ownerIds = new[] { identityId };
         return string.IsNullOrWhiteSpace(gridNameOrEntityId)
-            ? FormatGridList(plugin.Backups.ListBackedUpGrids(ownerIds), $"Backed up grids for {playerName}")
-            : FormatFileList(plugin.Backups.ListBackupFiles(ownerIds, gridNameOrEntityId), gridNameOrEntityId);
+            ? FormatGridList(
+                plugin.Backups.ListBackedUpGrids(ownerIds),
+                $"Backed up grids for {playerName}"
+            )
+            : FormatFileList(
+                plugin.Backups.ListBackupFiles(ownerIds, gridNameOrEntityId),
+                gridNameOrEntityId
+            );
     }
 
     [Command("list faction", "Lists backed up grids for a faction")]
@@ -61,7 +68,10 @@ public sealed class GridBackupsCommands : CommandModule
         var title = $"Backed up grids for [{faction.Tag}] {faction.Name}";
         return string.IsNullOrWhiteSpace(gridNameOrEntityId)
             ? FormatGridList(plugin.Backups.ListBackedUpGrids(ownerIds), title)
-            : FormatFileList(plugin.Backups.ListBackupFiles(ownerIds, gridNameOrEntityId), gridNameOrEntityId);
+            : FormatFileList(
+                plugin.Backups.ListBackupFiles(ownerIds, gridNameOrEntityId),
+                gridNameOrEntityId
+            );
     }
 
     [Command("find", "Finds backed up grids matching a name or entity id")]
@@ -72,12 +82,21 @@ public sealed class GridBackupsCommands : CommandModule
         if (plugin?.Backups == null)
             return Single(NotLoaded);
 
-        return FormatGridList(plugin.Backups.FindBackedUpGrids(gridNameOrEntityId), $"Find results for {gridNameOrEntityId}");
+        return FormatGridList(
+            plugin.Backups.FindBackedUpGrids(gridNameOrEntityId),
+            $"Find results for {gridNameOrEntityId}"
+        );
     }
 
     [Command("restore", "Restores a backed up grid")]
     [Permission(MyPromoteLevel.SpaceMaster)]
-    public string Restore(string playerNameOrSteamId, string gridNameOrEntityId, int backupNumber = 1, bool keepOriginalPosition = false, bool force = false)
+    public string Restore(
+        string playerNameOrSteamId,
+        string gridNameOrEntityId,
+        int backupNumber = 1,
+        bool keepOriginalPosition = false,
+        bool force = false
+    )
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
@@ -86,12 +105,25 @@ public sealed class GridBackupsCommands : CommandModule
         if (!TryResolvePlayer(playerNameOrSteamId, out var identityId, out _))
             return "Player not found.";
 
-        return Restore(plugin, new[] { identityId }, gridNameOrEntityId, backupNumber, keepOriginalPosition, force);
+        return Restore(
+            plugin,
+            new[] { identityId },
+            gridNameOrEntityId,
+            backupNumber,
+            keepOriginalPosition,
+            force
+        );
     }
 
     [Command("restore faction", "Restores a backed up grid from a faction member")]
     [Permission(MyPromoteLevel.SpaceMaster)]
-    public string RestoreFaction(string factionTag, string gridNameOrEntityId, int backupNumber = 1, bool keepOriginalPosition = false, bool force = false)
+    public string RestoreFaction(
+        string factionTag,
+        string gridNameOrEntityId,
+        int backupNumber = 1,
+        bool keepOriginalPosition = false,
+        bool force = false
+    )
     {
         var plugin = Plugin.Instance;
         if (plugin?.Backups == null)
@@ -101,7 +133,14 @@ public sealed class GridBackupsCommands : CommandModule
         if (faction == null)
             return "Faction not found.";
 
-        return Restore(plugin, faction.Members.Keys, gridNameOrEntityId, backupNumber, keepOriginalPosition, force);
+        return Restore(
+            plugin,
+            faction.Members.Keys,
+            gridNameOrEntityId,
+            backupNumber,
+            keepOriginalPosition,
+            force
+        );
     }
 
     [Command("run", "Starts a full backup scan now")]
@@ -124,7 +163,14 @@ public sealed class GridBackupsCommands : CommandModule
         return Plugin.Instance?.Backups?.GetStatus() ?? NotLoaded;
     }
 
-    private string Restore(Plugin plugin, IEnumerable<long> ownerIds, string gridNameOrEntityId, int backupNumber, bool keepOriginalPosition, bool force)
+    private string Restore(
+        Plugin plugin,
+        IEnumerable<long> ownerIds,
+        string gridNameOrEntityId,
+        int backupNumber,
+        bool keepOriginalPosition,
+        bool force
+    )
     {
         Vector3D? spawnPosition = null;
         if (!keepOriginalPosition)
@@ -137,40 +183,64 @@ public sealed class GridBackupsCommands : CommandModule
             if (character == null)
                 return "Caller has no character to restore near.";
 
-            spawnPosition = character.PositionComp.GetPosition() + character.WorldMatrix.Forward * 100.0;
+            spawnPosition =
+                character.PositionComp.GetPosition() + character.WorldMatrix.Forward * 100.0;
         }
 
-        var result = plugin.Backups.RestoreBackup(ownerIds, gridNameOrEntityId, backupNumber, keepOriginalPosition, spawnPosition, force);
+        var result = plugin.Backups.RestoreBackup(
+            ownerIds,
+            gridNameOrEntityId,
+            backupNumber,
+            keepOriginalPosition,
+            spawnPosition,
+            force
+        );
         if (result.Success)
         {
-            plugin.Log.Info("Grid backup restored", new { result.FilePath, caller = Context.Caller.Name });
+            plugin.Log.Info(
+                "Grid backup restored",
+                new { result.FilePath, caller = Context.Caller.Name }
+            );
             return $"Restored {Path.GetFileName(result.FilePath)} successfully.";
         }
 
         return result.Message;
     }
 
-    private static IEnumerable<string> FormatGridList(IReadOnlyList<BackupGridEntry> grids, string title)
+    private static IEnumerable<string> FormatGridList(
+        IReadOnlyList<BackupGridEntry> grids,
+        string title
+    )
     {
         if (grids.Count == 0)
             return Single("No matching backup grids found.");
 
         var lines = new List<string> { title };
         foreach (var grid in grids.Take(MaxListLines))
-            lines.Add($"{grid.Index}. {grid.OwnerName}: {grid.GridFolderName} - latest {grid.LatestBackupLocal:yyyy-MM-dd HH:mm:ss}");
+            lines.Add(
+                $"{grid.Index}. {grid.OwnerName}: {grid.GridFolderName} - latest {grid.LatestBackupLocal:yyyy-MM-dd HH:mm:ss}"
+            );
 
         if (grids.Count > MaxListLines)
-            lines.Add($"Showing {MaxListLines} of {grids.Count} matches. Narrow the grid name or entity id.");
+            lines.Add(
+                $"Showing {MaxListLines} of {grids.Count} matches. Narrow the grid name or entity id."
+            );
 
         return lines;
     }
 
-    private static IEnumerable<string> FormatFileList(IReadOnlyList<BackupFileEntry> files, string gridNameOrEntityId)
+    private static IEnumerable<string> FormatFileList(
+        IReadOnlyList<BackupFileEntry> files,
+        string gridNameOrEntityId
+    )
     {
         if (files.Count == 0)
             return Single("Grid not found.");
 
-        var lines = new List<string> { $"Backups for {files[0].GridFolderName} matching {gridNameOrEntityId}" };
+        var lines = new List<string>
+        {
+            $"Backups for {files[0].GridFolderName} matching {gridNameOrEntityId}",
+        };
         foreach (var file in files.Take(MaxListLines))
             lines.Add($"{file.Index}. {file.FileName} {file.SizeKb:#,##0.00} kb");
 
@@ -180,16 +250,21 @@ public sealed class GridBackupsCommands : CommandModule
         return lines;
     }
 
-    private static IEnumerable<string> Single(string message)
-        => new[] { message };
+    private static IEnumerable<string> Single(string message) => new[] { message };
 
-    private static bool TryResolvePlayer(string playerNameOrSteamId, out long identityId, out string playerName)
+    private static bool TryResolvePlayer(
+        string playerNameOrSteamId,
+        out long identityId,
+        out string playerName
+    )
     {
         identityId = 0;
         playerName = "Nobody";
 
-        if (string.Equals(playerNameOrSteamId, "0", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(playerNameOrSteamId, "nobody", StringComparison.OrdinalIgnoreCase))
+        if (
+            string.Equals(playerNameOrSteamId, "0", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(playerNameOrSteamId, "nobody", StringComparison.OrdinalIgnoreCase)
+        )
             return true;
 
         var players = MySession.Static?.Players;
@@ -217,8 +292,15 @@ public sealed class GridBackupsCommands : CommandModule
             }
         }
 
-        var exact = players.GetAllIdentities()
-            .FirstOrDefault(identity => string.Equals(identity.DisplayName, playerNameOrSteamId, StringComparison.OrdinalIgnoreCase));
+        var exact = players
+            .GetAllIdentities()
+            .FirstOrDefault(identity =>
+                string.Equals(
+                    identity.DisplayName,
+                    playerNameOrSteamId,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
         if (exact != null)
         {
             identityId = exact.IdentityId;
@@ -226,8 +308,14 @@ public sealed class GridBackupsCommands : CommandModule
             return true;
         }
 
-        var partialMatches = players.GetAllIdentities()
-            .Where(identity => identity.DisplayName.IndexOf(playerNameOrSteamId, StringComparison.OrdinalIgnoreCase) >= 0)
+        var partialMatches = players
+            .GetAllIdentities()
+            .Where(identity =>
+                identity.DisplayName.IndexOf(
+                    playerNameOrSteamId,
+                    StringComparison.OrdinalIgnoreCase
+                ) >= 0
+            )
             .Take(2)
             .ToList();
         if (partialMatches.Count != 1)
@@ -271,11 +359,11 @@ public sealed class RestoreBackupResult
     public string Message { get; }
     public string FilePath { get; }
 
-    public static RestoreBackupResult Ok(string filePath)
-        => new RestoreBackupResult(true, null, filePath);
+    public static RestoreBackupResult Ok(string filePath) =>
+        new RestoreBackupResult(true, null, filePath);
 
-    public static RestoreBackupResult Fail(string message)
-        => new RestoreBackupResult(false, message, null);
+    public static RestoreBackupResult Fail(string message) =>
+        new RestoreBackupResult(false, message, null);
 }
 
 public partial class GridBackupService
@@ -306,7 +394,10 @@ public partial class GridBackupService
         return entries;
     }
 
-    public IReadOnlyList<BackupFileEntry> ListBackupFiles(IEnumerable<long> ownerIds, string gridNameOrEntityId)
+    public IReadOnlyList<BackupFileEntry> ListBackupFiles(
+        IEnumerable<long> ownerIds,
+        string gridNameOrEntityId
+    )
     {
         var grid = FindGridDirectory(ownerIds, gridNameOrEntityId);
         if (grid == null)
@@ -314,20 +405,30 @@ public partial class GridBackupService
 
         var files = grid.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
             .OrderByDescending(file => file.LastWriteTimeUtc)
-            .Select((file, index) => new BackupFileEntry
-            {
-                Index = index + 1,
-                GridFolderName = grid.Name,
-                FileName = file.Name,
-                SizeKb = file.Length / 1024.0,
-                File = file,
-            })
+            .Select(
+                (file, index) =>
+                    new BackupFileEntry
+                    {
+                        Index = index + 1,
+                        GridFolderName = grid.Name,
+                        FileName = file.Name,
+                        SizeKb = file.Length / 1024.0,
+                        File = file,
+                    }
+            )
             .ToList();
 
         return files;
     }
 
-    public RestoreBackupResult RestoreBackup(IEnumerable<long> ownerIds, string gridNameOrEntityId, int backupNumber, bool keepOriginalPosition, Vector3D? spawnPosition, bool force)
+    public RestoreBackupResult RestoreBackup(
+        IEnumerable<long> ownerIds,
+        string gridNameOrEntityId,
+        int backupNumber,
+        bool keepOriginalPosition,
+        Vector3D? spawnPosition,
+        bool force
+    )
     {
         if (backupNumber < 1)
             return RestoreBackupResult.Fail("Backup number must be at least 1.");
@@ -346,7 +447,12 @@ public partial class GridBackupService
         if (file == null)
             return RestoreBackupResult.Fail("Backup not found. Check if the number is in range.");
 
-        if (!MyObjectBuilderSerializerKeen.DeserializeXML<MyObjectBuilder_Definitions>(file.FullName, out var definitions))
+        if (
+            !MyObjectBuilderSerializerKeen.DeserializeXML<MyObjectBuilder_Definitions>(
+                file.FullName,
+                out var definitions
+            )
+        )
             return RestoreBackupResult.Fail("Backup file could not be read.");
 
         var blueprint = definitions.ShipBlueprints?.FirstOrDefault();
@@ -362,7 +468,9 @@ public partial class GridBackupService
             builder.PersistentFlags |= MyPersistentEntityFlags2.InScene;
 
         if (!force && IsRestorePositionOccupied(builders))
-            return RestoreBackupResult.Fail("Restore area appears occupied. Repeat with force=true to ignore the occupation check.");
+            return RestoreBackupResult.Fail(
+                "Restore area appears occupied. Repeat with force=true to ignore the occupation check."
+            );
 
         foreach (var builder in builders)
             MyEntities.CreateFromObjectBuilderAndAdd(builder, fadeIn: false);
@@ -378,7 +486,12 @@ public partial class GridBackupService
             if (!Directory.Exists(ownerPath))
                 continue;
 
-            foreach (var dir in new DirectoryInfo(ownerPath).GetDirectories("*", SearchOption.TopDirectoryOnly))
+            foreach (
+                var dir in new DirectoryInfo(ownerPath).GetDirectories(
+                    "*",
+                    SearchOption.TopDirectoryOnly
+                )
+            )
             {
                 var latest = dir.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
                     .OrderByDescending(file => file.LastWriteTimeUtc)
@@ -409,7 +522,10 @@ public partial class GridBackupService
 
         foreach (var identity in identities)
         {
-            if (!Config.BackupNpcGrids && MySession.Static.Players.IdentityIsNpc(identity.IdentityId))
+            if (
+                !Config.BackupNpcGrids
+                && MySession.Static.Players.IdentityIsNpc(identity.IdentityId)
+            )
                 continue;
 
             yield return identity.IdentityId;
@@ -446,23 +562,27 @@ public partial class GridBackupService
         var regex = WildcardRegex(gridNameOrEntityId);
         var sanitized = SanitizeSegment(gridNameOrEntityId, gridNameOrEntityId);
 
-        return Matches(regex) ||
-               (!string.Equals(sanitized, gridNameOrEntityId, StringComparison.Ordinal) && Matches(WildcardRegex(sanitized)));
+        return Matches(regex)
+            || (
+                !string.Equals(sanitized, gridNameOrEntityId, StringComparison.Ordinal)
+                && Matches(WildcardRegex(sanitized))
+            );
 
-        bool Matches(string pattern)
-            => Regex.IsMatch(entityId, pattern, RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(gridName, pattern, RegexOptions.IgnoreCase) ||
-               Regex.IsMatch(name, pattern, RegexOptions.IgnoreCase);
+        bool Matches(string pattern) =>
+            Regex.IsMatch(entityId, pattern, RegexOptions.IgnoreCase)
+            || Regex.IsMatch(gridName, pattern, RegexOptions.IgnoreCase)
+            || Regex.IsMatch(name, pattern, RegexOptions.IgnoreCase);
 
-        static string WildcardRegex(string value)
-            => "^" + Regex.Escape(value).Replace("\\?", ".").Replace("\\*", ".*") + "$";
+        static string WildcardRegex(string value) =>
+            "^" + Regex.Escape(value).Replace("\\?", ".").Replace("\\*", ".*") + "$";
     }
 
-    private static void MoveBuildersNearPosition(IReadOnlyList<MyObjectBuilder_CubeGrid> builders, Vector3D spawnPosition)
+    private static void MoveBuildersNearPosition(
+        IReadOnlyList<MyObjectBuilder_CubeGrid> builders,
+        Vector3D spawnPosition
+    )
     {
-        var primary = builders
-            .OrderByDescending(builder => builder.CubeBlocks?.Count ?? 0)
-            .First();
+        var primary = builders.OrderByDescending(builder => builder.CubeBlocks?.Count ?? 0).First();
         var primaryPosition = GetBuilderPosition(primary);
         var offset = spawnPosition - primaryPosition;
 
@@ -472,7 +592,8 @@ public partial class GridBackupService
             builder.PositionAndOrientation = new MyPositionAndOrientation(
                 (Vector3D)orientation.Position + offset,
                 orientation.Forward,
-                orientation.Up);
+                orientation.Up
+            );
         }
     }
 
@@ -492,7 +613,10 @@ public partial class GridBackupService
             var matrix = builder.PositionAndOrientation.HasValue
                 ? builder.PositionAndOrientation.Value.GetMatrix()
                 : MatrixD.Identity;
-            var sphereD = new BoundingSphereD(Vector3D.Transform((Vector3D)sphere.Center, matrix), sphere.Radius);
+            var sphereD = new BoundingSphereD(
+                Vector3D.Transform((Vector3D)sphere.Center, matrix),
+                sphere.Radius
+            );
             if (MyEntities.IsSpherePenetrating(ref sphereD))
                 return true;
         }

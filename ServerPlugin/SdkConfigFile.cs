@@ -7,7 +7,8 @@ using PluginSdk.Logging;
 
 namespace ServerPlugin;
 
-public sealed class SdkConfigFile<T> : IDisposable where T : PluginConfig, new()
+public sealed class SdkConfigFile<T> : IDisposable
+    where T : PluginConfig, new()
 {
     private const int SaveDelayMs = 500;
     private readonly Logger log;

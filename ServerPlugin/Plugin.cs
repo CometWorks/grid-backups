@@ -9,13 +9,13 @@ using PluginSdk.Config;
 using PluginSdk.Logging;
 using VRage.Game;
 using VRage.Plugins;
-
 // Define assembly version when compiled by Magnetar
 #if !LOCAL_BUILD
 using System.Reflection;
 
 [assembly: AssemblyVersion("1.0.1.0")]
 [assembly: AssemblyFileVersion("1.0.1.0")]
+
 #endif
 
 namespace ServerPlugin;
@@ -37,7 +37,9 @@ public sealed class Plugin : IPlugin
 
     private SdkConfigFile<GridBackupsConfig> configFile;
 
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    [System.Runtime.CompilerServices.MethodImpl(
+        System.Runtime.CompilerServices.MethodImplOptions.NoInlining
+    )]
     public void Init(object gameInstance)
     {
 #if DEBUG
@@ -50,7 +52,10 @@ public sealed class Plugin : IPlugin
         try
         {
             PluginDataPath = ResolvePluginDataPath();
-            configFile = SdkConfigFile<GridBackupsConfig>.Load(Log, Path.Combine(PluginDataPath, ConfigFileName));
+            configFile = SdkConfigFile<GridBackupsConfig>.Load(
+                Log,
+                Path.Combine(PluginDataPath, ConfigFileName)
+            );
             Backups = new GridBackupService(this);
             ServerCommands.Register(Assembly.GetExecutingAssembly(), typeof(GridBackupsCommands));
 
@@ -101,11 +106,13 @@ public sealed class Plugin : IPlugin
         }
     }
 
-    public bool BackupBeforeConcealment(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity)
-        => Backups?.BackupBeforeConcealment(grids, ownerIdentity) ?? false;
+    public bool BackupBeforeConcealment(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity) =>
+        Backups?.BackupBeforeConcealment(grids, ownerIdentity) ?? false;
 
-    public bool BackupGridsManuallyWithBuilders(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity)
-        => Backups?.BackupExternalBuilders(grids, ownerIdentity, respectMinDelay: false) ?? false;
+    public bool BackupGridsManuallyWithBuilders(
+        List<MyObjectBuilder_CubeGrid> grids,
+        long ownerIdentity
+    ) => Backups?.BackupExternalBuilders(grids, ownerIdentity, respectMinDelay: false) ?? false;
 
     private static string ResolvePluginDataPath()
     {
@@ -125,9 +132,16 @@ public sealed class Plugin : IPlugin
             return derived;
 
         if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Quasar");
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Quasar"
+            );
 
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "Quasar");
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".config",
+            "Quasar"
+        );
     }
 
     private static string Create(string path)
