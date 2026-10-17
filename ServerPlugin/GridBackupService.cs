@@ -26,8 +26,10 @@ public sealed partial class GridBackupService
     private const string PluginId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
     private readonly Plugin plugin;
     private readonly object stateLock = new object();
-    private readonly ConcurrentDictionary<string, object> gridLocks = new ConcurrentDictionary<string, object>();
-    private readonly ConcurrentDictionary<long, byte> queuedGrids = new ConcurrentDictionary<long, byte>();
+    private readonly ConcurrentDictionary<string, object> gridLocks =
+        new ConcurrentDictionary<string, object>();
+    private readonly ConcurrentDictionary<long, byte> queuedGrids =
+        new ConcurrentDictionary<long, byte>();
     private readonly Dictionary<long, GridState> states = new Dictionary<long, GridState>();
     private DateTime nextScanUtc = DateTime.MinValue;
     private int runningBackups;
@@ -44,10 +46,9 @@ public sealed partial class GridBackupService
     {
         get
         {
-            var root = PluginCluster.IsClusterProcess
-                ? PluginStorage.GetSharedDirectory(PluginId)
-                : Config.UseQuasarConfigFolder
-                ? ResolveQuasarConfigRoot()
+            var root =
+                PluginCluster.IsClusterProcess ? PluginStorage.GetSharedDirectory(PluginId)
+                : Config.UseQuasarConfigFolder ? ResolveQuasarConfigRoot()
                 : MyFileSystem.UserDataPath;
 
             var folder = SanitizeSegment(Config.BackupFolderName, "GridBackups");
@@ -81,15 +82,27 @@ public sealed partial class GridBackupService
         return true;
     }
 
-    public bool BackupBeforeConcealment(IReadOnlyList<MyObjectBuilder_CubeGrid> grids, long ownerIdentity)
+    public bool BackupBeforeConcealment(
+        IReadOnlyList<MyObjectBuilder_CubeGrid> grids,
+        long ownerIdentity
+    )
     {
         if (!Config.Enabled || !Config.BackupBeforeConcealment || grids == null || grids.Count == 0)
             return false;
 
-        return BackupBuilders(ownerIdentity, grids, BackupReason.BeforeConcealment, respectMinDelay: true);
+        return BackupBuilders(
+            ownerIdentity,
+            grids,
+            BackupReason.BeforeConcealment,
+            respectMinDelay: true
+        );
     }
 
-    public bool BackupExternalBuilders(IReadOnlyList<MyObjectBuilder_CubeGrid> grids, long ownerIdentity, bool respectMinDelay)
+    public bool BackupExternalBuilders(
+        IReadOnlyList<MyObjectBuilder_CubeGrid> grids,
+        long ownerIdentity,
+        bool respectMinDelay
+    )
     {
         if (!Config.Enabled || grids == null || grids.Count == 0)
             return false;
@@ -155,17 +168,28 @@ public sealed partial class GridBackupService
 
         var sinceLast = now - state.LastBackupUtc;
 
-        if (Config.MaxMinutesSinceLastSave > 0 && sinceLast.TotalMinutes >= Config.MaxMinutesSinceLastSave)
+        if (
+            Config.MaxMinutesSinceLastSave > 0
+            && sinceLast.TotalMinutes >= Config.MaxMinutesSinceLastSave
+        )
             return BackupReason.MaxTime;
 
-        if (Config.MinMinutesSinceLastSave > 0 && sinceLast.TotalMinutes < Config.MinMinutesSinceLastSave)
+        if (
+            Config.MinMinutesSinceLastSave > 0
+            && sinceLast.TotalMinutes < Config.MinMinutesSinceLastSave
+        )
             return BackupReason.None;
 
-        if (Config.MaxBlockCountChange > 0 &&
-            Math.Abs(blockCount - state.LastBackupBlockCount) >= Config.MaxBlockCountChange)
+        if (
+            Config.MaxBlockCountChange > 0
+            && Math.Abs(blockCount - state.LastBackupBlockCount) >= Config.MaxBlockCountChange
+        )
             return BackupReason.BlockCountChange;
 
-        if (Config.BackupIfSteady && (now - state.LastChangedUtc).TotalSeconds >= Config.SteadySeconds)
+        if (
+            Config.BackupIfSteady
+            && (now - state.LastChangedUtc).TotalSeconds >= Config.SteadySeconds
+        )
             return BackupReason.Steady;
 
         return BackupReason.None;
@@ -190,7 +214,11 @@ public sealed partial class GridBackupService
         catch (Exception ex)
         {
             queuedGrids.TryRemove(group.PrimaryEntityId, out _);
-            plugin.Log.Error("Failed to collect grid object builders", ex, new { group.PrimaryEntityId });
+            plugin.Log.Error(
+                "Failed to collect grid object builders",
+                ex,
+                new { group.PrimaryEntityId }
+            );
             return false;
         }
 
@@ -212,14 +240,17 @@ public sealed partial class GridBackupService
         return true;
     }
 
-    private bool BackupBuilders(long ownerIdentity, IReadOnlyList<MyObjectBuilder_CubeGrid> builders, BackupReason reason, bool respectMinDelay)
+    private bool BackupBuilders(
+        long ownerIdentity,
+        IReadOnlyList<MyObjectBuilder_CubeGrid> builders,
+        BackupReason reason,
+        bool respectMinDelay
+    )
     {
         if (builders.Count == 0)
             return false;
 
-        var biggest = builders
-            .OrderByDescending(g => g.CubeBlocks?.Count ?? 0)
-            .First();
+        var biggest = builders.OrderByDescending(g => g.CubeBlocks?.Count ?? 0).First();
         var primaryEntityId = biggest.EntityId;
 
         if (respectMinDelay && !MinDelayElapsed(primaryEntityId))
@@ -227,48 +258,65 @@ public sealed partial class GridBackupService
 
         try
         {
-            var gridName = string.IsNullOrWhiteSpace(biggest.DisplayName) ? "Grid" : biggest.DisplayName;
+            var gridName = string.IsNullOrWhiteSpace(biggest.DisplayName)
+                ? "Grid"
+                : biggest.DisplayName;
             var pathForPlayer = CreatePathForPlayer(BackupRoot, ownerIdentity);
             var pathForGrid = CreatePathForGrid(pathForPlayer, gridName, primaryEntityId);
             Directory.CreateDirectory(pathForGrid);
 
             string filePath;
             lock (gridLocks.GetOrAdd(pathForGrid, _ => new object()))
-            using (AcquireGridLock(pathForGrid))
-            {
-                if (PluginCluster.IsClusterProcess)
+                using (AcquireGridLock(pathForGrid))
                 {
-                    var latest = new DirectoryInfo(pathForGrid).GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
-                        .Where(file => !file.Name.StartsWith(DailyPrefix + "_", StringComparison.OrdinalIgnoreCase))
-                        .Select(file => file.LastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
-                    var elapsed = DateTime.UtcNow - latest;
-                    if (reason == BackupReason.MaxTime
-                        ? Config.MaxMinutesSinceLastSave > 0 && elapsed.TotalMinutes < Config.MaxMinutesSinceLastSave
-                        : respectMinDelay && Config.MinMinutesSinceLastSave > 0
-                          && elapsed.TotalMinutes < Config.MinMinutesSinceLastSave)
+                    if (PluginCluster.IsClusterProcess)
+                    {
+                        var latest = new DirectoryInfo(pathForGrid)
+                            .GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
+                            .Where(file =>
+                                !file.Name.StartsWith(
+                                    DailyPrefix + "_",
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            )
+                            .Select(file => file.LastWriteTimeUtc)
+                            .DefaultIfEmpty(DateTime.MinValue)
+                            .Max();
+                        var elapsed = DateTime.UtcNow - latest;
+                        if (
+                            reason == BackupReason.MaxTime
+                                ? Config.MaxMinutesSinceLastSave > 0
+                                    && elapsed.TotalMinutes < Config.MaxMinutesSinceLastSave
+                                : respectMinDelay
+                                    && Config.MinMinutesSinceLastSave > 0
+                                    && elapsed.TotalMinutes < Config.MinMinutesSinceLastSave
+                        )
+                            return false;
+                    }
+
+                    var now = DateTime.Now;
+                    if (Config.NumberOfDailyBackupSaves > 0)
+                    {
+                        var dailyPath = Path.Combine(
+                            pathForGrid,
+                            $"{DailyPrefix}_{now:yyyy_MM_dd}.sbc"
+                        );
+                        if (!File.Exists(dailyPath))
+                            SaveGrid(dailyPath, gridName, builders);
+                    }
+
+                    var name = PluginCluster.IsClusterProcess
+                        ? $"{now:yyyy_MM_dd_HH_mm_ss}_{Guid.NewGuid():N}"
+                        : $"{now:yyyy_MM_dd_HH_mm_ss}";
+                    filePath = Path.Combine(pathForGrid, name + ".sbc");
+                    // A second backup within the same second, under the grid lock
+                    for (var n = 2; File.Exists(filePath); n++)
+                        filePath = Path.Combine(pathForGrid, $"{name}_{n}.sbc");
+                    if (!SaveGrid(filePath, gridName, builders))
                         return false;
+
+                    CleanUpDirectory(pathForGrid);
                 }
-
-                var now = DateTime.Now;
-                if (Config.NumberOfDailyBackupSaves > 0)
-                {
-                    var dailyPath = Path.Combine(pathForGrid, $"{DailyPrefix}_{now:yyyy_MM_dd}.sbc");
-                    if (!File.Exists(dailyPath))
-                        SaveGrid(dailyPath, gridName, builders);
-                }
-
-                var name = PluginCluster.IsClusterProcess
-                    ? $"{now:yyyy_MM_dd_HH_mm_ss}_{Guid.NewGuid():N}"
-                    : $"{now:yyyy_MM_dd_HH_mm_ss}";
-                filePath = Path.Combine(pathForGrid, name + ".sbc");
-                // A second backup within the same second, under the grid lock
-                for (var n = 2; File.Exists(filePath); n++)
-                    filePath = Path.Combine(pathForGrid, $"{name}_{n}.sbc");
-                if (!SaveGrid(filePath, gridName, builders))
-                    return false;
-
-                CleanUpDirectory(pathForGrid);
-            }
             CleanupOldBackupsIfDue();
 
             var backupUtc = DateTime.UtcNow;
@@ -287,7 +335,16 @@ public sealed partial class GridBackupService
         }
         catch (Exception ex)
         {
-            plugin.Log.Error("Grid backup failed", ex, new { ownerIdentity, primaryEntityId, reason = reason.ToString() });
+            plugin.Log.Error(
+                "Grid backup failed",
+                ex,
+                new
+                {
+                    ownerIdentity,
+                    primaryEntityId,
+                    reason = reason.ToString(),
+                }
+            );
             return false;
         }
     }
@@ -299,9 +356,10 @@ public sealed partial class GridBackupService
 
         lock (stateLock)
         {
-            return !states.TryGetValue(entityId, out var state) ||
-                   state.LastBackupUtc == DateTime.MinValue ||
-                   (DateTime.UtcNow - state.LastBackupUtc).TotalMinutes >= Config.MinMinutesSinceLastSave;
+            return !states.TryGetValue(entityId, out var state)
+                || state.LastBackupUtc == DateTime.MinValue
+                || (DateTime.UtcNow - state.LastBackupUtc).TotalMinutes
+                    >= Config.MinMinutesSinceLastSave;
         }
     }
 
@@ -313,10 +371,7 @@ public sealed partial class GridBackupService
         {
             foreach (var group in MyCubeGridGroups.Static.Mechanical.Groups)
             {
-                var grids = group.Nodes
-                    .Select(n => n.NodeData)
-                    .Where(IsBackupCandidate)
-                    .ToList();
+                var grids = group.Nodes.Select(n => n.NodeData).Where(IsBackupCandidate).ToList();
 
                 if (grids.Count == 0)
                     continue;
@@ -334,7 +389,11 @@ public sealed partial class GridBackupService
 
         foreach (var entity in MyEntities.GetEntities())
         {
-            if (entity is not MyCubeGrid grid || exported.Contains(grid.EntityId) || !IsBackupCandidate(grid))
+            if (
+                entity is not MyCubeGrid grid
+                || exported.Contains(grid.EntityId)
+                || !IsBackupCandidate(grid)
+            )
                 continue;
 
             var backupGroup = CreateGroup(new List<MyCubeGrid> { grid });
@@ -368,7 +427,8 @@ public sealed partial class GridBackupService
             biggest.EntityId,
             GetOwnerIdentityId(biggest),
             grids.Sum(g => g.BlocksCount),
-            grids);
+            grids
+        );
     }
 
     private static MyObjectBuilder_CubeGrid GetBuilder(MyCubeGrid grid)
@@ -376,15 +436,23 @@ public sealed partial class GridBackupService
         if (grid.GetObjectBuilder() is MyObjectBuilder_CubeGrid builder)
             return builder;
 
-        throw new InvalidOperationException($"{grid.DisplayName} object builder is not a cube grid");
+        throw new InvalidOperationException(
+            $"{grid.DisplayName} object builder is not a cube grid"
+        );
     }
 
-    private bool SaveGrid(string filePath, string gridName, IReadOnlyList<MyObjectBuilder_CubeGrid> builders)
+    private bool SaveGrid(
+        string filePath,
+        string gridName,
+        IReadOnlyList<MyObjectBuilder_CubeGrid> builders
+    )
     {
-        var definition = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_ShipBlueprintDefinition>();
+        var definition =
+            MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_ShipBlueprintDefinition>();
         definition.Id = new MyDefinitionId(
             new MyObjectBuilderType(typeof(MyObjectBuilder_ShipBlueprintDefinition)),
-            gridName);
+            gridName
+        );
         definition.CubeGrids = builders.ToArray();
 
         if (!Config.KeepOriginalOwner)
@@ -402,7 +470,8 @@ public sealed partial class GridBackupService
             }
         }
 
-        var definitions = MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_Definitions>();
+        var definitions =
+            MyObjectBuilderSerializerKeen.CreateNewObject<MyObjectBuilder_Definitions>();
         definitions.ShipBlueprints = new[] { definition };
 
         var directory = Path.GetDirectoryName(filePath);
@@ -414,27 +483,52 @@ public sealed partial class GridBackupService
         {
             if (!MyObjectBuilderSerializerKeen.SerializeXML(temporary, false, definitions))
                 return false;
-            try { File.Move(temporary, filePath); }
-            catch (IOException) when (File.Exists(filePath)) { return false; }
+            try
+            {
+                File.Move(temporary, filePath);
+            }
+            catch (IOException) when (File.Exists(filePath))
+            {
+                return false;
+            }
             return true;
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     private static FileStream AcquireGridLock(string directory)
     {
-        var stream = new FileStream(Path.Combine(directory, ".backup.lock"), FileMode.OpenOrCreate,
-            FileAccess.ReadWrite, FileShare.ReadWrite);
+        var stream = new FileStream(
+            Path.Combine(directory, ".backup.lock"),
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.ReadWrite
+        );
         var wait = Stopwatch.StartNew();
         try
         {
             while (true)
             {
-                try { stream.Lock(0, 1); return stream; }
-                catch (IOException) when (wait.Elapsed < TimeSpan.FromSeconds(5)) { Thread.Sleep(25); }
+                try
+                {
+                    stream.Lock(0, 1);
+                    return stream;
+                }
+                catch (IOException) when (wait.Elapsed < TimeSpan.FromSeconds(5))
+                {
+                    Thread.Sleep(25);
+                }
             }
         }
-        catch { stream.Dispose(); throw; }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private string CreatePathForPlayer(string root, long playerId)
@@ -453,18 +547,19 @@ public sealed partial class GridBackupService
         if (Config.PlayerNameOnFolders)
         {
             var identity = MySession.Static?.Players.TryGetIdentity(playerId);
-            var name = identity == null ? "Nobody" : SanitizeSegment(identity.DisplayName, "Player");
+            var name =
+                identity == null ? "Nobody" : SanitizeSegment(identity.DisplayName, "Player");
             folderName = $"{name}_{folderName}";
         }
 
         return Path.Combine(root, folderName);
     }
 
-    private static string CreatePathForGrid(string playerPath, string gridName, long entityId)
-        => Path.Combine(playerPath, $"{SanitizeSegment(gridName, "Grid")}_{entityId}");
+    private static string CreatePathForGrid(string playerPath, string gridName, long entityId) =>
+        Path.Combine(playerPath, $"{SanitizeSegment(gridName, "Grid")}_{entityId}");
 
-    private static long GetOwnerIdentityId(MyCubeGrid grid)
-        => grid.BigOwners != null && grid.BigOwners.Count > 0 ? grid.BigOwners[0] : 0;
+    private static long GetOwnerIdentityId(MyCubeGrid grid) =>
+        grid.BigOwners != null && grid.BigOwners.Count > 0 ? grid.BigOwners[0] : 0;
 
     private void CleanUpDirectory(string pathForGrid)
     {
@@ -503,20 +598,26 @@ public sealed partial class GridBackupService
         lastCleanupUtc = now;
         var cutoff = now.AddDays(-Config.DeleteBackupsOlderThanDays);
 
-        foreach (var file in new DirectoryInfo(BackupRoot).GetFiles("*.sbc", SearchOption.AllDirectories))
+        foreach (
+            var file in new DirectoryInfo(BackupRoot).GetFiles("*.sbc", SearchOption.AllDirectories)
+        )
         {
-            if (file.Directory?.Name == ".pending") continue;
+            if (file.Directory?.Name == ".pending")
+                continue;
             try
             {
                 var directory = file.DirectoryName;
                 lock (gridLocks.GetOrAdd(directory, _ => new object()))
-                using (AcquireGridLock(directory))
-                    if (file.Exists && file.LastWriteTimeUtc < cutoff)
-                        file.Delete();
+                    using (AcquireGridLock(directory))
+                        if (file.Exists && file.LastWriteTimeUtc < cutoff)
+                            file.Delete();
             }
             catch (Exception ex)
             {
-                plugin.Log.Warning("Failed deleting old backup", new { file = file.FullName, error = ex.Message });
+                plugin.Log.Warning(
+                    "Failed deleting old backup",
+                    new { file = file.FullName, error = ex.Message }
+                );
             }
         }
     }
@@ -534,7 +635,10 @@ public sealed partial class GridBackupService
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Quasar");
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Quasar"
+            );
 
         return Path.Combine(home, ".config", "Quasar");
     }
@@ -564,7 +668,11 @@ public sealed partial class GridBackupService
         var platformInvalid = Path.GetInvalidFileNameChars();
         var chars = value
             .Trim()
-            .Select(c => char.IsControl(c) || windowsInvalid.IndexOf(c) >= 0 || platformInvalid.Contains(c) ? '_' : c)
+            .Select(c =>
+                char.IsControl(c) || windowsInvalid.IndexOf(c) >= 0 || platformInvalid.Contains(c)
+                    ? '_'
+                    : c
+            )
             .ToArray();
         var sanitized = new string(chars).TrimEnd(' ', '.');
         if (IsWindowsReservedName(sanitized))
@@ -578,19 +686,19 @@ public sealed partial class GridBackupService
     private static bool IsWindowsReservedName(string value)
     {
         var name = value.Split('.')[0];
-        return string.Equals(name, "CON", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "PRN", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "AUX", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "NUL", StringComparison.OrdinalIgnoreCase) ||
-               IsReservedDeviceName(name, "COM") ||
-               IsReservedDeviceName(name, "LPT");
+        return string.Equals(name, "CON", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "PRN", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "AUX", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "NUL", StringComparison.OrdinalIgnoreCase)
+            || IsReservedDeviceName(name, "COM")
+            || IsReservedDeviceName(name, "LPT");
     }
 
-    private static bool IsReservedDeviceName(string value, string prefix)
-        => value.Length == 4 &&
-           value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-           value[3] >= '1' &&
-           value[3] <= '9';
+    private static bool IsReservedDeviceName(string value, string prefix) =>
+        value.Length == 4
+        && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        && value[3] >= '1'
+        && value[3] <= '9';
 
     private sealed class GridState
     {
@@ -610,7 +718,12 @@ public sealed partial class GridBackupService
 
     private sealed class BackupGroup
     {
-        public BackupGroup(long primaryEntityId, long ownerIdentityId, int blockCount, List<MyCubeGrid> grids)
+        public BackupGroup(
+            long primaryEntityId,
+            long ownerIdentityId,
+            int blockCount,
+            List<MyCubeGrid> grids
+        )
         {
             PrimaryEntityId = primaryEntityId;
             OwnerIdentityId = ownerIdentityId;
