@@ -7,14 +7,15 @@ using System.Threading;
 using PluginSdk.Commands;
 using PluginSdk.Config;
 using PluginSdk.Logging;
+using Sandbox.Game.Entities;
 using VRage.Game;
 using VRage.Plugins;
 // Define assembly version when compiled by Magnetar
 #if !LOCAL_BUILD
 using System.Reflection;
 
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 #endif
 
@@ -108,6 +109,9 @@ public sealed class Plugin : IPlugin
 
     public bool BackupBeforeConcealment(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity) =>
         Backups?.BackupBeforeConcealment(grids, ownerIdentity) ?? false;
+
+    public bool WouldBackupBeforeConcealment(List<MyCubeGrid> grids) =>
+        Backups?.WouldBackupBeforeConcealment(grids) ?? false;
 
     public bool BackupGridsManuallyWithBuilders(
         List<MyObjectBuilder_CubeGrid> grids,

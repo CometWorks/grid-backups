@@ -49,9 +49,17 @@ Restore defaults to the latest backup, spawning near the caller. Console restore
 Other plugins can call:
 
 ```csharp
+bool WouldBackupBeforeConcealment(List<MyCubeGrid> grids);
 bool BackupBeforeConcealment(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity);
 bool BackupGridsManuallyWithBuilders(List<MyObjectBuilder_CubeGrid> grids, long ownerIdentity);
 ```
+
+`BackupBeforeConcealment` applies the same filters as the scans: the `BackupBeforeConcealment`
+option, `BackupNobodyGrids` and `BackupNpcGrids` for `ownerIdentity`, `MinBlocksForBackup` for
+the total block count of the grids, and `MinMinutesSinceLastSave`. `WouldBackupBeforeConcealment`
+answers whether it would back up a grid group now, without building object builders, so a
+concealment plugin can skip building them for a backup that won't be written. Pass it the
+same grids, and call it on the game's update thread.
 
 ## Build
 

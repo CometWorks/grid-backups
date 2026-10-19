@@ -87,7 +87,14 @@ public sealed partial class GridBackupService
         long ownerIdentity
     )
     {
-        if (!Config.Enabled || !Config.BackupBeforeConcealment || grids == null || grids.Count == 0)
+        if (
+            grids == null
+            || grids.Count == 0
+            || !AcceptsBeforeConcealment(
+                ownerIdentity,
+                grids.Sum(g => g.CubeBlocks?.Count ?? 0)
+            )
+        )
             return false;
 
         return BackupBuilders(
@@ -96,6 +103,33 @@ public sealed partial class GridBackupService
             BackupReason.BeforeConcealment,
             respectMinDelay: true
         );
+    }
+
+    // Cheap enough for the update thread: no object builders. Answers whether
+    // BackupBeforeConcealment would back up this grid group now, so the caller
+    // builds the object builders only for a backup that gets written.
+    public bool WouldBackupBeforeConcealment(IReadOnlyList<MyCubeGrid> grids)
+    {
+        var biggest = grids?.OrderByDescending(g => g.BlocksCount).FirstOrDefault();
+        return biggest != null
+            && AcceptsBeforeConcealment(
+                GetOwnerIdentityId(biggest),
+                grids.Sum(g => g.BlocksCount)
+            )
+            && MinDelayElapsed(biggest.EntityId);
+    }
+
+    // The candidate filters of the scans, for a whole group: its owner is the
+    // big owner of its biggest grid, as Concealment passes it
+    private bool AcceptsBeforeConcealment(long ownerIdentity, int blockCount)
+    {
+        if (!Config.Enabled || !Config.BackupBeforeConcealment)
+            return false;
+
+        if (blockCount < Config.MinBlocksForBackup)
+            return false;
+
+        return IsBackupOwner(ownerIdentity);
     }
 
     public bool BackupExternalBuilders(
@@ -410,7 +444,11 @@ public sealed partial class GridBackupService
         if (grid.Physics == null && !grid.IsStatic)
             return false;
 
-        var owner = GetOwnerIdentityId(grid);
+        return IsBackupOwner(GetOwnerIdentityId(grid));
+    }
+
+    private bool IsBackupOwner(long owner)
+    {
         if (owner == 0)
             return Config.BackupNobodyGrids;
 
