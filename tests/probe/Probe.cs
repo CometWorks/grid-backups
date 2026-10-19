@@ -444,6 +444,25 @@ public sealed class ProbeCommands : CommandModule
         "Probe conceal: " + CallEntryPoint("BackupBeforeConcealment", gridId);
 
     [Command(
+        "would",
+        "Calls WouldBackupBeforeConcealment with a grid's group, as Concealment would."
+    )]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Would(long gridId)
+    {
+        MyCubeGrid grid = FindGrid(gridId);
+        if (grid == null)
+            return "Probe would: none";
+
+        object plugin = Plugin;
+        object answer = plugin
+            .GetType()
+            .GetMethod("WouldBackupBeforeConcealment")
+            .Invoke(plugin, new object[] { Group(grid) });
+        return "Probe would: " + answer;
+    }
+
+    [Command(
         "external",
         "Calls BackupGridsManuallyWithBuilders with a grid's group, `times` times in a row."
     )]

@@ -7,7 +7,10 @@ time with the probe instead of waiting for minutes to pass.
 
 Concealment 1.1.0 and later call BackupBeforeConcealment before they conceal a
 grid group, and the Concealment suite tests that. Here the probe calls the entry
-point the way Concealment does, so this suite runs without Concealment.
+points the way Concealment does, so this suite runs without Concealment.
+Concealment asks WouldBackupBeforeConcealment first, so it builds object
+builders only for a backup that gets written; its answer must match what
+BackupBeforeConcealment then does.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from __future__ import annotations
 import time
 
 import grids
-from grids import ALPHA_SHIP, ALPHA_STATION, TINY, TRIGGER
+from grids import ALPHA_SHIP, ALPHA_STATION, PIRATE_BASE, TINY, TRIGGER, WRECK
 
 
 def test_first_scan_backs_up_every_grid(game):
@@ -123,6 +126,7 @@ def test_steady_backup_once_the_block_count_settles(game):
 
 
 def test_backup_before_concealment(game):
+    assert game.probe("would", ALPHA_SHIP.entity_id) == "Probe would: True"
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: True"
     assert len(game.grid_files(ALPHA_SHIP)) == 1
     assert game.reason(game.grid_files(ALPHA_SHIP)[0]) == "BeforeConcealment"
@@ -131,18 +135,40 @@ def test_backup_before_concealment(game):
 
 def test_backup_before_concealment_switched_off(game):
     game.configure(BackupBeforeConcealment=False)
+    assert game.probe("would", ALPHA_SHIP.entity_id) == "Probe would: False"
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: False"
     game.configure(BackupBeforeConcealment=True, Enabled=False)
+    assert game.probe("would", ALPHA_SHIP.entity_id) == "Probe would: False"
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: False"
     assert game.files() == []
+
+
+def test_backup_before_concealment_applies_the_scan_filters(game):
+    # Tiny is below the minimum block count, the pirate base is an NPC's and the
+    # wreck is nobody's: the scans skip them, and so does a backup before concealment
+    skipped = (TINY, PIRATE_BASE, WRECK)
+    for grid in skipped:
+        assert game.probe("would", grid.entity_id) == "Probe would: False", grid.name
+        assert (
+            game.probe("conceal", grid.entity_id) == "Probe conceal: False"
+        ), grid.name
+    assert game.files() == []
+
+    game.configure(MinBlocksForBackup=1, BackupNpcGrids=True, BackupNobodyGrids=True)
+    for grid in skipped:
+        assert game.probe("would", grid.entity_id) == "Probe would: True", grid.name
+        assert game.probe("conceal", grid.entity_id) == "Probe conceal: True", grid.name
+    assert game.backed_up() == {g.entity_id for g in skipped}
 
 
 def test_backup_before_concealment_waits_for_the_min_time(game):
     game.configure(MinMinutesSinceLastSave=1)
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: True"
     time.sleep(1.1)
+    assert game.probe("would", ALPHA_SHIP.entity_id) == "Probe would: False"
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: False"
     game.probe("age", ALPHA_SHIP.entity_id, 61)
+    assert game.probe("would", ALPHA_SHIP.entity_id) == "Probe would: True"
     assert game.probe("conceal", ALPHA_SHIP.entity_id) == "Probe conceal: True"
     assert len(game.grid_files(ALPHA_SHIP)) == 2
 
