@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using HarmonyLib;
 using PluginSdk.Commands;
 using PluginSdk.Config;
@@ -15,8 +16,8 @@ using VRage.Plugins;
 #if !LOCAL_BUILD
 using System.Reflection;
 
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 #endif
 
@@ -35,6 +36,7 @@ public sealed class Plugin : IPlugin
     public GridBackupsConfig Config => configFile?.Data;
     public GridBackupService Backups { get; private set; }
     public GridLossLog Losses { get; private set; }
+    public CompanionOperations Companion { get; private set; }
     public string PluginDataPath { get; private set; }
     public string LoadError { get; private set; }
 
@@ -61,6 +63,7 @@ public sealed class Plugin : IPlugin
             );
             Backups = new GridBackupService(this);
             Losses = new GridLossLog(this);
+            Companion = new CompanionOperations(this);
             GridLossLog.Patch(new Harmony(Name), Log);
             ServerCommands.Register(Assembly.GetExecutingAssembly(), typeof(GridBackupsCommands));
 
@@ -105,6 +108,8 @@ public sealed class Plugin : IPlugin
         {
             Backups?.Update();
             Losses?.Update();
+            if (Companion != null)
+                QuasarCompanionBridge.TryRegister(Companion);
         }
         catch (Exception ex)
         {
@@ -123,6 +128,18 @@ public sealed class Plugin : IPlugin
         List<MyObjectBuilder_CubeGrid> grids,
         long ownerIdentity
     ) => Backups?.BackupExternalBuilders(grids, ownerIdentity, respectMinDelay: false) ?? false;
+
+    // The companion operations (docs/CompanionOperations.md), which Quasar.Agent
+    // reaches through QuasarCompanionBridge. Not to be awaited on the game thread.
+    public Task<CompanionReply> HandleCompanionRequestAsync(
+        string operation,
+        string payloadJson,
+        CancellationToken cancellationToken
+    ) =>
+        Companion?.HandleAsync(operation, payloadJson, cancellationToken)
+        ?? Task.FromResult(
+            new CompanionReply { Error = LoadError ?? "GridBackups is not loaded." }
+        );
 
     private static string ResolvePluginDataPath()
     {
