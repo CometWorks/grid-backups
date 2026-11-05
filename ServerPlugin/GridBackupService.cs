@@ -156,6 +156,8 @@ public sealed partial class GridBackupService
             var key = group.PrimaryEntityId;
             seen.Add(key);
             var blockCount = group.BlockCount;
+            if (blockCount >= Config.MinBlocksForBackup && group.OwnerIdentityId != 0)
+                plugin.Losses?.Track(group.Grids.First(g => g.EntityId == key));
 
             BackupReason reason;
             lock (stateLock)
@@ -187,6 +189,8 @@ public sealed partial class GridBackupService
                 if (!seen.Contains(key))
                     states.Remove(key);
         }
+
+        plugin.Losses?.Prune(now);
     }
 
     private BackupReason GetBackupReason(GridState state, int blockCount, DateTime now)

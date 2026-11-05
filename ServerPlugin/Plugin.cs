@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using HarmonyLib;
 using PluginSdk.Commands;
 using PluginSdk.Config;
 using PluginSdk.Logging;
@@ -33,6 +34,7 @@ public sealed class Plugin : IPlugin
     public Logger Log { get; } = Logger.Create(Name);
     public GridBackupsConfig Config => configFile?.Data;
     public GridBackupService Backups { get; private set; }
+    public GridLossLog Losses { get; private set; }
     public string PluginDataPath { get; private set; }
     public string LoadError { get; private set; }
 
@@ -58,6 +60,8 @@ public sealed class Plugin : IPlugin
                 Path.Combine(PluginDataPath, ConfigFileName)
             );
             Backups = new GridBackupService(this);
+            Losses = new GridLossLog(this);
+            GridLossLog.Patch(new Harmony(Name), Log);
             ServerCommands.Register(Assembly.GetExecutingAssembly(), typeof(GridBackupsCommands));
 
             var schemaJson = ConfigStorage.SaveJson(Config);
@@ -70,6 +74,7 @@ public sealed class Plugin : IPlugin
             failed = true;
             // The commands may be registered already; they answer with this
             Backups = null;
+            Losses = null;
             LoadError = ex.Message;
             Log.Critical("Failed to load", ex);
         }
@@ -99,6 +104,7 @@ public sealed class Plugin : IPlugin
         try
         {
             Backups?.Update();
+            Losses?.Update();
         }
         catch (Exception ex)
         {
