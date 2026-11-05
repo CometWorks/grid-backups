@@ -2,7 +2,7 @@
 through the probe: a grid loss and its cause in the loss log, a restore that
 keeps the grid's entity ids, the checks that refuse one, the undo of a
 restore, placement away from other players' grids, every big owner seeing a
-grid, and the same operations through Quasar's handler interface.
+grid, and the plugin found and called the way Quasar.Agent does it.
 
 Each test that loses Loss ship brings it back in place, with its ids, so the
 tests after it find the world as it was."""
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -277,27 +276,13 @@ def test_losses_since(game):
         bring_back(game)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("GB_MAGNETAR_PROTOCOL"),
-    reason="GB_MAGNETAR_PROTOCOL names no Magnetar.Protocol.dll",
-)
-def test_operations_through_quasars_handler_interface(game):
-    path = os.environ["GB_MAGNETAR_PROTOCOL"]
-    assert game.probe("protocol", path) == "Probe protocol: Magnetar.Protocol"
+def test_quasar_agent_finds_the_handler(game):
+    """Found among the loaded plugins by its members, the way Quasar.Agent
+    looks for a companion handler, and called through them"""
     game.scan()
-    listed: list[dict] = []
-
-    def answered() -> bool:
-        try:
-            listed[:] = companion(game, "list", via="quasar", steamId=steam(game.a))[
-                "grids"
-            ]
-        except AssertionError:
-            # "Probe quasar: no handler" until the bridge registers
-            return False
-        return True
-
-    wait_until(answered, 30, "the companion handler", interval=2)
+    listed = companion(game, "list", via="quasar", steamId=steam(game.a))["grids"]
     assert ALPHA_STATION.entity_id in {g["gridId"] for g in listed}
-    with pytest.raises(CompanionError, match="Unsupported operation"):
+    with pytest.raises(CompanionError, match="Unsupported operation 'nope'"):
         companion(game, "nope", via="quasar")
+    with pytest.raises(CompanionError, match="steamId is missing"):
+        companion(game, "list", via="quasar")

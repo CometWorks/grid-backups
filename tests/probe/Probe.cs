@@ -483,54 +483,93 @@ public sealed class ProbeCommands : CommandModule
 
     // --- companion operations ---------------------------------------------------
 
+    private const string GridBackupsId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
+
     private static readonly Dictionary<string, Task<string>> Requests =
         new Dictionary<string, Task<string>>();
 
     private static string Text(string base64) =>
         Encoding.UTF8.GetString(Convert.FromBase64String(base64));
 
-    // Off the game thread: the operations wait for it
-    private static string Start(string requestId, Func<Task<object>> call)
+    // The members Quasar.Agent looks for on a plugin instance, with exactly
+    // this signature: the id, and the request taking the operation and its
+    // payload JSON and answering the payload JSON, an exception for an error
+    private static MethodInfo Handler(object plugin)
     {
-        Requests[requestId] = Task.Run(async () =>
-        {
-            object reply = await call();
-            Type type = reply.GetType();
-            string Read(string name) => type.GetProperty(name).GetValue(reply)?.ToString();
-            return Read("Success") == "True"
-                ? "ok " + Read("PayloadJson")
-                : "error " + Read("Error");
-        });
-        return "Probe companion: started";
+        Type type = plugin.GetType();
+        if (
+            type.GetProperty("QuasarCompanionPluginId", BindingFlags.Public | BindingFlags.Instance)
+                ?.GetValue(plugin)
+                is not string id
+            || !string.Equals(id, GridBackupsId, StringComparison.OrdinalIgnoreCase)
+        )
+            return null;
+        MethodInfo method = type.GetMethod(
+            "HandleQuasarCompanionRequestAsync",
+            BindingFlags.Public | BindingFlags.Instance,
+            null,
+            new[] { typeof(string), typeof(string), typeof(CancellationToken) },
+            null
+        );
+        return method?.ReturnType == typeof(Task<string>) ? method : null;
     }
 
-    private static async Task<object> Await(object task)
+    // Off the game thread: the operations wait for it
+    private static string Start(
+        string requestId,
+        object plugin,
+        MethodInfo handler,
+        string operation,
+        string payload
+    )
     {
-        await (Task)task;
-        return task.GetType().GetProperty("Result").GetValue(task);
+        string json = Text(payload);
+        Requests[requestId] = Task.Run(async () =>
+            "ok "
+            + await (Task<string>)
+                handler.Invoke(plugin, new object[] { operation, json, CancellationToken.None })
+        );
+        return "Probe companion: started";
     }
 
     [Command(
         "companion",
-        "Starts a companion request: id, operation, base64 JSON payload. See result."
+        "Starts a companion request on Grid Backups: id, operation, base64 JSON payload. See result."
     )]
     [Permission(MyPromoteLevel.Admin)]
     public string Companion(string requestId, string operation, string payload)
     {
         object plugin = Plugin;
-        return Start(
-            requestId,
-            () =>
-                Await(
-                    plugin
+        return Start(requestId, plugin, Handler(plugin), operation, payload);
+    }
+
+    // The way Quasar.Agent finds a companion handler (GameBridge.cs): among the
+    // game's plugins and the plugins Pulsar's loader holds
+    [Command("quasar", "Starts a companion request on the handler Quasar.Agent would find.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Quasar(string requestId, string operation, string payload)
+    {
+        var plugins = new List<object>();
+        foreach (IPlugin root in MyPlugins.Plugins)
+        {
+            plugins.Add(root);
+            if (root.GetType().FullName != "Pulsar.Legacy.Loader.PluginLoader")
+                continue;
+            foreach (
+                object server in (IEnumerable)root.GetType().GetProperty("Plugins").GetValue(root)
+            )
+                plugins.Add(
+                    server
                         .GetType()
-                        .GetMethod("HandleCompanionRequestAsync")
-                        .Invoke(
-                            plugin,
-                            new object[] { operation, Text(payload), CancellationToken.None }
-                        )
-                )
-        );
+                        .GetField("plugin", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.GetValue(server)
+                );
+        }
+
+        object target = plugins.FirstOrDefault(p => p != null && Handler(p) != null);
+        return target == null
+            ? "Probe quasar: no handler"
+            : Start(requestId, target, Handler(target), operation, payload);
     }
 
     [Command("result", "The reply to a companion request: pending, ok <json> or error <text>.")]
@@ -548,53 +587,6 @@ public sealed class ProbeCommands : CommandModule
                     ? request.Result
                     : "error " + request.Exception?.GetBaseException().Message
             );
-    }
-
-    [Command("protocol", "Loads Magnetar.Protocol.dll, as Quasar.Agent would.")]
-    [Permission(MyPromoteLevel.Admin)]
-    public string Protocol(string path) =>
-        "Probe protocol: " + Assembly.LoadFrom(path).GetName().Name;
-
-    // The way Quasar.Agent finds and calls a companion handler (GameBridge.cs)
-    [Command("quasar", "Starts a companion request through Quasar's handler interface.")]
-    [Permission(MyPromoteLevel.Admin)]
-    public string Quasar(string requestId, string operation, string payload)
-    {
-        Type handler = AppDomain
-            .CurrentDomain.GetAssemblies()
-            .First(a => a.GetName().Name == "Magnetar.Protocol")
-            .GetType("Magnetar.Protocol.Bridge.IQuasarCompanionRequestHandler");
-        object target = MyPlugins.Plugins.FirstOrDefault(p =>
-            handler.IsInstanceOfType(p)
-            && (string)handler.GetProperty("PluginId").GetValue(p)
-                == "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C"
-        );
-        if (target == null)
-            return "Probe quasar: no handler";
-
-        object request = Activator.CreateInstance(
-            handler.Assembly.GetType("Magnetar.Protocol.Model.CompanionPluginRequest")
-        );
-        foreach (
-            var (name, value) in new (string, object)[]
-            {
-                ("PluginId", "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C"),
-                ("Operation", operation),
-                ("CorrelationId", requestId),
-                ("PayloadJson", Text(payload)),
-            }
-        )
-            request.GetType().GetProperty(name).SetValue(request, value);
-
-        return Start(
-            requestId,
-            () =>
-                Await(
-                    handler
-                        .GetMethod("HandleQuasarCompanionRequestAsync")
-                        .Invoke(target, new[] { request, (object)CancellationToken.None })
-                )
-        );
     }
 
     // --- grid losses -------------------------------------------------------------

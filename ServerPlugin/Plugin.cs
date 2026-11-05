@@ -108,8 +108,6 @@ public sealed class Plugin : IPlugin
         {
             Backups?.Update();
             Losses?.Update();
-            if (Companion != null)
-                QuasarCompanionBridge.TryRegister(Companion);
         }
         catch (Exception ex)
         {
@@ -129,17 +127,26 @@ public sealed class Plugin : IPlugin
         long ownerIdentity
     ) => Backups?.BackupExternalBuilders(grids, ownerIdentity, respectMinDelay: false) ?? false;
 
-    // The companion operations (docs/CompanionOperations.md), which Quasar.Agent
-    // reaches through QuasarCompanionBridge. Not to be awaited on the game thread.
-    public Task<CompanionReply> HandleCompanionRequestAsync(
+    // The companion operations (docs/CompanionOperations.md). Quasar.Agent finds
+    // these two members by reflection, so the plugin needs no Magnetar.Protocol
+    // reference and loads where no Quasar.Agent is.
+    public string QuasarCompanionPluginId => GridBackupService.PluginId;
+
+    // The answer's payload JSON; an exception is a failed request, its message
+    // the error. Not to be awaited on the game thread, where the operations
+    // read game state.
+    public async Task<string> HandleQuasarCompanionRequestAsync(
         string operation,
         string payloadJson,
         CancellationToken cancellationToken
-    ) =>
-        Companion?.HandleAsync(operation, payloadJson, cancellationToken)
-        ?? Task.FromResult(
-            new CompanionReply { Error = LoadError ?? "GridBackups is not loaded." }
-        );
+    )
+    {
+        var companion =
+            Companion
+            ?? throw new InvalidOperationException(LoadError ?? "GridBackups is not loaded.");
+        var reply = await companion.HandleAsync(operation, payloadJson, cancellationToken);
+        return reply.Success ? reply.PayloadJson : throw new InvalidOperationException(reply.Error);
+    }
 
     private static string ResolvePluginDataPath()
     {

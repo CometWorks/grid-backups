@@ -2,11 +2,10 @@
 
 Quasar reaches Grid Backups through its companion channel: a Quasar UI plugin
 sends `ServerCommandType.PluginRequest` to Quasar.Agent, which hands it to the
-Magnetar plugin that implements `IQuasarCompanionRequestHandler` with the
-requested plugin id. The Clangy assistant in Quasar (QSR-4) uses these
-operations for the player tools `my_grids`, `my_grid_backups` and
-`my_grid_restore`. Limits, quotas, which loss causes may be restored without
-an admin, and the audit are Quasar's side.
+Magnetar plugin that answers for the requested plugin id. The Clangy
+assistant in Quasar (QSR-4) uses these operations for the player tools
+`my_grids`, `my_grid_backups` and `my_grid_restore`. Limits, quotas, which
+loss causes may be restored without an admin, and the audit are Quasar's side.
 
 Plugin id: `9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C`, the id in `GridBackups.xml`.
 
@@ -14,20 +13,21 @@ Plugin id: `9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C`, the id in `GridBackups.xml`.
 
 Magnetar compiles hub plugins from source against the game, PluginSdk and a
 few libraries, not against `Magnetar.Protocol`, and Grid Backups also runs
-where Quasar.Agent doesn't. So the plugin doesn't implement the handler
-interface itself. Once Quasar.Agent has loaded `Magnetar.Protocol`,
-`QuasarCompanionBridge` emits a small adapter type that implements `IPlugin`
-and `IQuasarCompanionRequestHandler`, forwards each request to the plugin,
-and adds it to the game's plugin list, where Quasar.Agent looks for handlers.
-Without Quasar.Agent nothing happens.
-
-Other plugins and tests can call the same operations directly:
+where Quasar.Agent doesn't. So instead of implementing
+`IQuasarCompanionRequestHandler`, the plugin class has two members that
+Quasar.Agent finds by reflection:
 
 ```csharp
-Task<CompanionReply> HandleCompanionRequestAsync(string operation, string payloadJson, CancellationToken cancellationToken);
+public string QuasarCompanionPluginId { get; }
+public Task<string> HandleQuasarCompanionRequestAsync(string operation, string payloadJson, CancellationToken cancellationToken);
 ```
 
-Don't wait for it on the game thread: the operations read game state there.
+The task's result is the answer's payload JSON. A failed request throws, and
+Quasar.Agent turns the exception into `Success = false` with its message as
+the error. Without Quasar.Agent nobody calls them.
+
+Don't wait for the task on the game thread: the operations read game state
+there.
 
 ## Conventions
 
@@ -36,8 +36,9 @@ Don't wait for it on the game thread: the operations read game state there.
   the player's identities itself.
 - Entity and identity ids are JSON numbers (64-bit). Steam ids in answers are
   decimal strings, like the request's.
-- An error is `Success = false` with a short `Error`: unknown operation,
-  missing argument, unknown player. A refused restore is a normal answer with
+- An error (an exception from `HandleQuasarCompanionRequestAsync`, so
+  `Success = false` with a short `Error`): unknown operation, missing
+  argument, unknown player. A refused restore is a normal answer with
   `status` and `reason`.
 - On a cluster the backups, the loss log and the restore records are in the
   shared storage, so every node answers for the whole cluster, except

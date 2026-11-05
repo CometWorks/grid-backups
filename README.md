@@ -141,9 +141,8 @@ plugin's log and the grids on the server. What it covers:
 - Backups, config and listing across a server restart (`test_restart.py`)
 - The companion operations: grid losses and their causes, restores that keep
   the entity ids, the checks that refuse one, its undo, placement away from
-  other players' grids, co-owners (`test_companion.py`). Export
-  `GB_MAGNETAR_PROTOCOL` with the path of a `Magnetar.Protocol.dll` to also
-  call them through Quasar's handler interface
+  other players' grids, co-owners, and the plugin found and called by its
+  companion members the way Quasar.Agent does it (`test_companion.py`)
 
 The test world is the game's Empty World with the test players, a faction and a row of
 test grids, written fresh for every run. `tests/probe` is a test-only server plugin the

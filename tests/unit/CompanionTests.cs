@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 using ServerPlugin;
 using VRageMath;
 using Xunit;
@@ -238,4 +242,81 @@ public sealed class IndexTests : IDisposable
                 }
             )
         );
+}
+
+// The two members Quasar.Agent finds on the plugin by reflection, and the
+// errors that come back through them. The answers that need a game are in
+// the in-game suite.
+public sealed class CompanionMemberTests : IDisposable
+{
+    private const BindingFlags Any =
+        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+    private readonly Rig rig = new();
+
+    public CompanionMemberTests()
+    {
+        Environment.SetEnvironmentVariable("QUASAR_DATA_DIR", rig.Sub("quasar"));
+        Set("Backups", rig.Service);
+        Set("Losses", new GridLossLog(rig.Plugin));
+        Set("Companion", new CompanionOperations(rig.Plugin));
+    }
+
+    public void Dispose() => rig.Dispose();
+
+    private void Set(string property, object value) =>
+        typeof(Plugin).GetProperty(property, Any).SetValue(rig.Plugin, value);
+
+    private Task<string> Call(string operation, string payload) =>
+        rig.Plugin.HandleQuasarCompanionRequestAsync(operation, payload, CancellationToken.None);
+
+    [Fact]
+    public void TheManifestIdNamesTheHandler()
+    {
+        var manifest = XDocument.Load(
+            Path.Combine(AppContext.BaseDirectory, "../../../../../GridBackups.xml")
+        );
+        Assert.Equal(manifest.Root.Element("Id").Value, rig.Plugin.QuasarCompanionPluginId);
+    }
+
+    [Fact]
+    public void TheSignatureQuasarAgentLooksFor()
+    {
+        var method = typeof(Plugin).GetMethod(
+            "HandleQuasarCompanionRequestAsync",
+            BindingFlags.Public | BindingFlags.Instance,
+            null,
+            new[] { typeof(string), typeof(string), typeof(CancellationToken) },
+            null
+        );
+        Assert.Equal(typeof(Task<string>), method?.ReturnType);
+        Assert.Equal(
+            typeof(string),
+            typeof(Plugin)
+                .GetProperty("QuasarCompanionPluginId", BindingFlags.Public | BindingFlags.Instance)
+                ?.PropertyType
+        );
+    }
+
+    [Theory]
+    [InlineData("nope", "{}", "Unsupported operation 'nope'.")]
+    [InlineData("list", "{}", "steamId is missing.")]
+    [InlineData("list", "", "steamId is missing.")]
+    [InlineData("remove-restored", "{}", "entityIds is missing.")]
+    [InlineData("remove-restored", "{\"entityIds\":[5]}", "Not restored by Grid Backups: 5.")]
+    public async Task ErrorsAreExceptions(string operation, string payload, string error)
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Call(operation, payload)
+        );
+        Assert.Equal(error, ex.Message);
+    }
+
+    [Fact]
+    public async Task NotLoaded()
+    {
+        Set("Companion", null);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Call("list", "{}"));
+        Assert.Equal("GridBackups is not loaded.", ex.Message);
+    }
 }
