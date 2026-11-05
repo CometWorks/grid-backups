@@ -23,7 +23,7 @@ namespace ServerPlugin;
 public sealed partial class GridBackupService
 {
     private const string DailyPrefix = "daily";
-    private const string PluginId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
+    public const string PluginId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
     private readonly Plugin plugin;
     private readonly object stateLock = new object();
     private readonly ConcurrentDictionary<string, object> gridLocks =
@@ -90,10 +90,7 @@ public sealed partial class GridBackupService
         if (
             grids == null
             || grids.Count == 0
-            || !AcceptsBeforeConcealment(
-                ownerIdentity,
-                grids.Sum(g => g.CubeBlocks?.Count ?? 0)
-            )
+            || !AcceptsBeforeConcealment(ownerIdentity, grids.Sum(g => g.CubeBlocks?.Count ?? 0))
         )
             return false;
 
@@ -112,10 +109,7 @@ public sealed partial class GridBackupService
     {
         var biggest = grids?.OrderByDescending(g => g.BlocksCount).FirstOrDefault();
         return biggest != null
-            && AcceptsBeforeConcealment(
-                GetOwnerIdentityId(biggest),
-                grids.Sum(g => g.BlocksCount)
-            )
+            && AcceptsBeforeConcealment(GetOwnerIdentityId(biggest), grids.Sum(g => g.BlocksCount))
             && MinDelayElapsed(biggest.EntityId);
     }
 
@@ -329,14 +323,16 @@ public sealed partial class GridBackupService
                     }
 
                     var now = DateTime.Now;
+                    // Before SaveGrid, which drops the owners unless they are kept
+                    var info = DescribeBuilders(builders, DateTime.UtcNow);
                     if (Config.NumberOfDailyBackupSaves > 0)
                     {
                         var dailyPath = Path.Combine(
                             pathForGrid,
                             $"{DailyPrefix}_{now:yyyy_MM_dd}.sbc"
                         );
-                        if (!File.Exists(dailyPath))
-                            SaveGrid(dailyPath, gridName, builders);
+                        if (!File.Exists(dailyPath) && SaveGrid(dailyPath, gridName, builders))
+                            WriteIndex(dailyPath, info);
                     }
 
                     var name = PluginCluster.IsClusterProcess
@@ -348,6 +344,7 @@ public sealed partial class GridBackupService
                         filePath = Path.Combine(pathForGrid, $"{name}_{n}.sbc");
                     if (!SaveGrid(filePath, gridName, builders))
                         return false;
+                    WriteIndex(filePath, info);
 
                     CleanUpDirectory(pathForGrid);
                 }
@@ -615,11 +612,11 @@ public sealed partial class GridBackupService
             if (isDaily)
             {
                 if (dailyCount++ >= Config.NumberOfDailyBackupSaves)
-                    file.Delete();
+                    DeleteBackupFile(file);
             }
             else if (normalCount++ >= Config.NumberOfBackupSaves)
             {
-                file.Delete();
+                DeleteBackupFile(file);
             }
         }
     }
@@ -648,7 +645,7 @@ public sealed partial class GridBackupService
                 lock (gridLocks.GetOrAdd(directory, _ => new object()))
                     using (AcquireGridLock(directory))
                         if (file.Exists && file.LastWriteTimeUtc < cutoff)
-                            file.Delete();
+                            DeleteBackupFile(file);
             }
             catch (Exception ex)
             {
@@ -657,6 +654,21 @@ public sealed partial class GridBackupService
                     new { file = file.FullName, error = ex.Message }
                 );
             }
+        }
+
+        // The loss log and the restore records follow the backups' retention
+        foreach (var folder in new[] { LossesFolder, RestoredFolder })
+        {
+            var dir = new DirectoryInfo(Path.Combine(BackupRoot, folder));
+            if (!dir.Exists)
+                continue;
+            foreach (var file in dir.GetFiles("*.json"))
+                try
+                {
+                    if (file.LastWriteTimeUtc < cutoff)
+                        file.Delete();
+                }
+                catch (IOException) { }
         }
     }
 

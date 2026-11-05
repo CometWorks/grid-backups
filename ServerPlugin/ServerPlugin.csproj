@@ -296,6 +296,10 @@
       <HintPath>$(Dedicated64Dir)VRage.UserInterface.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(Dedicated64Dir)Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="VRage.XmlSerializers, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
       <HintPath>$(Dedicated64Dir)VRage.XmlSerializers.dll</HintPath>
       <Private>False</Private>

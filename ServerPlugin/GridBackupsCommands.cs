@@ -478,21 +478,35 @@ public partial class GridBackupService
         return RestoreBackupResult.Ok(file.FullName);
     }
 
+    // The grid folders in each owner's folder, and those of grids the owner is
+    // a big owner of in another owner's folder (the owner markers), each once
     private IEnumerable<BackupGridEntry> EnumerateGridDirectories(IEnumerable<long> ownerIds)
     {
+        var seen = new HashSet<string>();
+        Dictionary<long, List<DirectoryInfo>> all = null;
         foreach (var ownerId in ownerIds.Distinct())
         {
             var ownerPath = CreatePathForPlayer(BackupRoot, ownerId);
-            if (!Directory.Exists(ownerPath))
-                continue;
-
-            foreach (
-                var dir in new DirectoryInfo(ownerPath).GetDirectories(
-                    "*",
-                    SearchOption.TopDirectoryOnly
-                )
-            )
+            var dirs = Directory.Exists(ownerPath)
+                ? new DirectoryInfo(ownerPath).GetDirectories("*", SearchOption.TopDirectoryOnly)
+                : Array.Empty<DirectoryInfo>();
+            var marked = GridIdsOf(new[] { ownerId });
+            if (marked.Count > 0)
             {
+                all ??= GridDirectories();
+                dirs = dirs.Concat(
+                        marked.SelectMany(id =>
+                            all.TryGetValue(id, out var list) ? list : new List<DirectoryInfo>()
+                        )
+                    )
+                    .ToArray();
+            }
+
+            foreach (var dir in dirs)
+            {
+                if (!seen.Add(dir.FullName))
+                    continue;
+
                 var latest = dir.GetFiles("*.sbc", SearchOption.TopDirectoryOnly)
                     .OrderByDescending(file => file.LastWriteTimeUtc)
                     .FirstOrDefault();
