@@ -61,6 +61,20 @@ answers whether it would back up a grid group now, without building object build
 concealment plugin can skip building them for a backup that won't be written. Pass it the
 same grids, and call it on the game's update thread.
 
+## Companion operations and the loss log
+
+Quasar's assistant (QSR-4) calls Grid Backups through the companion channel:
+`list`, `describe`, `losses`, `restore` and `remove-restored`, for a player
+named by Steam id. A restore spawns the grids with the entity ids of the
+backup, so the same lost grid is the same grid after it comes back. The
+plugin also keeps a loss log: each player-owned grid it backs up that leaves
+the world, with the cause (destroyed, deleted, cleanup, ground, merged,
+stored in Hangar or unknown), in the backup folder. Every big owner of a
+backup is recorded, so a grid is listed for each of them, by the companion
+operations and by `!gridbackup list`. See
+[docs/CompanionOperations.md](docs/CompanionOperations.md) for the JSON
+contract and how the causes are told apart.
+
 ## Build
 
 Requirements:
@@ -97,7 +111,8 @@ Builds deploy nothing by default. To copy the build into `<MagnetarData>/Local`,
 
 `tests/unit` has unit tests of the logic that needs no game: the storage root (Quasar
 data folder, the server's data folder, cluster storage), a broken config file, the backup
-triggers, retention, grid name matching and folder names. They build against the Dedicated
+triggers, retention, grid name matching and folder names, the backup index, and the
+restore decisions (big owners, backup choice, loss causes, the placement search). They build against the Dedicated
 Server and Magnetar like the plugin does:
 
 ```bash
@@ -124,6 +139,11 @@ plugin's log and the grids on the server. What it covers:
 - Cluster storage: two servers started as cluster nodes that share one storage root
   (`nodes.py`), coordinating their backups through it (`test_cluster.py`)
 - Backups, config and listing across a server restart (`test_restart.py`)
+- The companion operations: grid losses and their causes, restores that keep
+  the entity ids, the checks that refuse one, its undo, placement away from
+  other players' grids, co-owners (`test_companion.py`). Export
+  `GB_MAGNETAR_PROTOCOL` with the path of a `Magnetar.Protocol.dll` to also
+  call them through Quasar's handler interface
 
 The test world is the game's Empty World with the test players, a faction and a row of
 test grids, written fresh for every run. `tests/probe` is a test-only server plugin the
