@@ -169,6 +169,34 @@ RESTORE_STATION = add(
     ],
 )
 
+# A ship whose loss the companion tests cause and restore, with a cargo
+# container for emptied inventories
+LOSS_SHIP_ID = _next()
+LOSS_CARGO_ID = LOSS_SHIP_ID + 101
+LOSS_SHIP = add(
+    "Loss ship",
+    site(11),
+    armor(box(3, 1, 3))
+    + [
+        battery((0, 1, 0), LOSS_SHIP_ID + 100),
+        cargo((2, 1, 2), LOSS_CARGO_ID),
+    ],
+    static=False,
+)
+# Two batteries of A and two of B: both are big owners
+SHARED_BASE_ID = _next()
+SHARED_BASE = add(
+    "Shared base",
+    site(12),
+    armor(box(3, 1, 3))
+    + [
+        battery((0, 1, 0), SHARED_BASE_ID + 100),
+        battery((0, 1, 2), SHARED_BASE_ID + 101),
+        battery((2, 1, 0), SHARED_BASE_ID + 102, owner=PLAYER_B),
+        battery((2, 1, 2), SHARED_BASE_ID + 103, owner=PLAYER_B),
+    ],
+)
+
 ALL = list(_grids)
 BY_ID = {g.entity_id: g for g in ALL}
 # The grids a backup scan backs up with the default test config

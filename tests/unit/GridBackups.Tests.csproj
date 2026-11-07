@@ -22,6 +22,11 @@
     <Reference Include="PluginSdk">
       <HintPath>$(MagnetarBinDir)PluginSdk.dll</HintPath>
     </Reference>
+    <!-- Vector3D, for the restore placement -->
+    <Reference Include="VRage.Math">
+      <HintPath>$(Dedicated64Dir)VRage.Math.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- MyFileSystem, for the server's data folder -->
     <Reference Include="VRage.Library">
       <HintPath>$(Dedicated64Dir)VRage.Library.dll</HintPath>

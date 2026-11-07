@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
+using HarmonyLib;
 using PluginSdk.Commands;
 using PluginSdk.Config;
 using PluginSdk.Logging;
@@ -14,8 +16,8 @@ using VRage.Plugins;
 #if !LOCAL_BUILD
 using System.Reflection;
 
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 #endif
 
@@ -33,6 +35,8 @@ public sealed class Plugin : IPlugin
     public Logger Log { get; } = Logger.Create(Name);
     public GridBackupsConfig Config => configFile?.Data;
     public GridBackupService Backups { get; private set; }
+    public GridLossLog Losses { get; private set; }
+    public CompanionOperations Companion { get; private set; }
     public string PluginDataPath { get; private set; }
     public string LoadError { get; private set; }
 
@@ -58,6 +62,9 @@ public sealed class Plugin : IPlugin
                 Path.Combine(PluginDataPath, ConfigFileName)
             );
             Backups = new GridBackupService(this);
+            Losses = new GridLossLog(this);
+            Companion = new CompanionOperations(this);
+            GridLossLog.Patch(new Harmony(Name), Log);
             ServerCommands.Register(Assembly.GetExecutingAssembly(), typeof(GridBackupsCommands));
 
             var schemaJson = ConfigStorage.SaveJson(Config);
@@ -70,6 +77,7 @@ public sealed class Plugin : IPlugin
             failed = true;
             // The commands may be registered already; they answer with this
             Backups = null;
+            Losses = null;
             LoadError = ex.Message;
             Log.Critical("Failed to load", ex);
         }
@@ -99,6 +107,7 @@ public sealed class Plugin : IPlugin
         try
         {
             Backups?.Update();
+            Losses?.Update();
         }
         catch (Exception ex)
         {
@@ -117,6 +126,27 @@ public sealed class Plugin : IPlugin
         List<MyObjectBuilder_CubeGrid> grids,
         long ownerIdentity
     ) => Backups?.BackupExternalBuilders(grids, ownerIdentity, respectMinDelay: false) ?? false;
+
+    // The companion operations (docs/CompanionOperations.md). Quasar.Agent finds
+    // these two members by reflection, so the plugin needs no Magnetar.Protocol
+    // reference and loads where no Quasar.Agent is.
+    public string QuasarCompanionPluginId => GridBackupService.PluginId;
+
+    // The answer's payload JSON; an exception is a failed request, its message
+    // the error. Not to be awaited on the game thread, where the operations
+    // read game state.
+    public async Task<string> HandleQuasarCompanionRequestAsync(
+        string operation,
+        string payloadJson,
+        CancellationToken cancellationToken
+    )
+    {
+        var companion =
+            Companion
+            ?? throw new InvalidOperationException(LoadError ?? "GridBackups is not loaded.");
+        var reply = await companion.HandleAsync(operation, payloadJson, cancellationToken);
+        return reply.Success ? reply.PayloadJson : throw new InvalidOperationException(reply.Error);
+    }
 
     private static string ResolvePluginDataPath()
     {

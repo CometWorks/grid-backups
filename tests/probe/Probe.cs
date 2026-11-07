@@ -5,11 +5,16 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using PluginSdk.Commands;
 using PluginSdk.Config;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
+using Sandbox.Game.GameSystems;
+using Sandbox.Game.SessionComponents;
 using Sandbox.Game.World;
 using VRage;
 using VRage.FileSystem;
@@ -475,6 +480,174 @@ public sealed class ProbeCommands : CommandModule
                 .Range(0, times)
                 .Select(_ => CallEntryPoint("BackupGridsManuallyWithBuilders", gridId))
         );
+
+    // --- companion operations ---------------------------------------------------
+
+    private const string GridBackupsId = "9AC2F6A8-B8A7-4250-8814-BADE62C5CF3C";
+
+    private static readonly Dictionary<string, Task<string>> Requests =
+        new Dictionary<string, Task<string>>();
+
+    private static string Text(string base64) =>
+        Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+
+    // The members Quasar.Agent looks for on a plugin instance, with exactly
+    // this signature: the id, and the request taking the operation and its
+    // payload JSON and answering the payload JSON, an exception for an error
+    private static MethodInfo Handler(object plugin)
+    {
+        Type type = plugin.GetType();
+        if (
+            type.GetProperty("QuasarCompanionPluginId", BindingFlags.Public | BindingFlags.Instance)
+                ?.GetValue(plugin)
+                is not string id
+            || !string.Equals(id, GridBackupsId, StringComparison.OrdinalIgnoreCase)
+        )
+            return null;
+        MethodInfo method = type.GetMethod(
+            "HandleQuasarCompanionRequestAsync",
+            BindingFlags.Public | BindingFlags.Instance,
+            null,
+            new[] { typeof(string), typeof(string), typeof(CancellationToken) },
+            null
+        );
+        return method?.ReturnType == typeof(Task<string>) ? method : null;
+    }
+
+    // Off the game thread: the operations wait for it
+    private static string Start(
+        string requestId,
+        object plugin,
+        MethodInfo handler,
+        string operation,
+        string payload
+    )
+    {
+        string json = Text(payload);
+        Requests[requestId] = Task.Run(async () =>
+            "ok "
+            + await (Task<string>)
+                handler.Invoke(plugin, new object[] { operation, json, CancellationToken.None })
+        );
+        return "Probe companion: started";
+    }
+
+    [Command(
+        "companion",
+        "Starts a companion request on Grid Backups: id, operation, base64 JSON payload. See result."
+    )]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Companion(string requestId, string operation, string payload)
+    {
+        object plugin = Plugin;
+        return Start(requestId, plugin, Handler(plugin), operation, payload);
+    }
+
+    // The way Quasar.Agent finds a companion handler (GameBridge.cs): among the
+    // game's plugins and the plugins Pulsar's loader holds
+    [Command("quasar", "Starts a companion request on the handler Quasar.Agent would find.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Quasar(string requestId, string operation, string payload)
+    {
+        var plugins = new List<object>();
+        foreach (IPlugin root in MyPlugins.Plugins)
+        {
+            plugins.Add(root);
+            if (root.GetType().FullName != "Pulsar.Legacy.Loader.PluginLoader")
+                continue;
+            foreach (
+                object server in (IEnumerable)root.GetType().GetProperty("Plugins").GetValue(root)
+            )
+                plugins.Add(
+                    server
+                        .GetType()
+                        .GetField("plugin", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.GetValue(server)
+                );
+        }
+
+        object target = plugins.FirstOrDefault(p => p != null && Handler(p) != null);
+        return target == null
+            ? "Probe quasar: no handler"
+            : Start(requestId, target, Handler(target), operation, payload);
+    }
+
+    [Command("result", "The reply to a companion request: pending, ok <json> or error <text>.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Result(string requestId)
+    {
+        if (!Requests.TryGetValue(requestId, out Task<string> request))
+            return "Probe result: none";
+        if (!request.IsCompleted)
+            return "Probe result: pending";
+        Requests.Remove(requestId);
+        return "Probe result: "
+            + (
+                request.Status == TaskStatus.RanToCompletion
+                    ? request.Result
+                    : "error " + request.Exception?.GetBaseException().Message
+            );
+    }
+
+    // --- grid losses -------------------------------------------------------------
+
+    [Command("damage", "Destroys every block of a grid by damage.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Damage(long gridId)
+    {
+        MyCubeGrid grid = FindGrid(gridId);
+        if (grid == null)
+            return "Probe damage: none";
+
+        foreach (MySlimBlock block in grid.GetBlocks().ToList())
+            block.DoDamage(1e9f, MyDamageType.Explosion, true, null, 0);
+        return "Probe damage: done";
+    }
+
+    [Command("grind", "Grinds every block of a grid away, as a grinder does.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Grind(long gridId)
+    {
+        MyCubeGrid grid = FindGrid(gridId);
+        if (grid == null)
+            return "Probe grind: none";
+
+        foreach (MySlimBlock block in grid.GetBlocks().ToList())
+        {
+            // MyAngleGrinder: the destroy event with Grind damage, then the raze
+            MyDamageSystem.Static.RaiseDestroyed(
+                block,
+                new MyDamageInformation(false, 1, MyDamageType.Grind, 0)
+            );
+            block.CubeGrid.RazeBlock(block.Min);
+        }
+
+        return "Probe grind: done";
+    }
+
+    [Command("delete", "Deletes a grid as the admin screen's entity list does.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Delete(long gridId)
+    {
+        MyCubeGrid grid = FindGrid(gridId);
+        if (grid == null)
+            return "Probe delete: none";
+
+        MyEntityList.ProceedEntityAction(grid, MyEntityList.EntityListAction.Remove);
+        return "Probe delete: done";
+    }
+
+    [Command("trash", "Removes a grid as the trash removal does.")]
+    [Permission(MyPromoteLevel.Admin)]
+    public string Trash(long gridId)
+    {
+        MyCubeGrid grid = FindGrid(gridId);
+        if (grid == null)
+            return "Probe trash: none";
+
+        MySessionComponentTrash.RemoveGrid(grid);
+        return "Probe trash: done";
+    }
 
     // --- players --------------------------------------------------------------
 
