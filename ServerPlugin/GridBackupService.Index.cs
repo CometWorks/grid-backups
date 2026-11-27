@@ -23,6 +23,10 @@ public sealed class BackupInfo
     public int Pcu { get; set; }
     public int GridCount { get; set; }
     public Position Position { get; set; }
+
+    // The cluster node that took it (CLUSTER_NODE_ID), null on a plain server
+    public string Node { get; set; }
+    public string Reason { get; set; }
 }
 
 // One backup file on disk and what is known about it

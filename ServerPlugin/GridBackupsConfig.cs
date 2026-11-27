@@ -103,6 +103,18 @@ public class GridBackupsConfig : PluginConfig
         set => SetField(ref field, value);
     } = 1440;
 
+    [IntOption(
+        0,
+        3600,
+        "In a cluster: no backups for this many seconds after the node starts serving, a partition comes to it, or a grid arrives by handover",
+        Parent = "timing"
+    )]
+    public int ClusterSettleSeconds
+    {
+        get;
+        set => SetField(ref field, value);
+    } = 120;
+
     [BoolOption(
         "Allow external concealment plugins to call the public before-concealment backup entrypoint",
         Parent = "triggers"
