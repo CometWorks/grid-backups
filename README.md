@@ -13,6 +13,17 @@ backup filenames include a unique suffix to avoid collisions across Hosts.
 An automatic backup is counted only after its file is written successfully;
 failed writes can be retried on the next scan.
 The shared filesystem must support advisory file locks and atomic rename.
+
+On a cluster with a Gateway, a node backs up only the grids it owns and
+simulates (`PluginClusterClient.LocateEntity` says `Local`). It writes nothing
+while it starts, stops or is fenced, or for `ClusterSettleSeconds` (120)
+after it starts serving. A grid frozen for a handover, or still being loaded,
+is skipped. So is a grid in the first `ClusterSettleSeconds` after its
+partition came to the node (a load or a handover) or after it arrived there.
+The plugin logs `Backups on hold` and `Backups resumed` with the reason, and
+each backup's side file names the node that took it. Nodes that only share a
+storage root, without a Gateway, back up every grid they see, coordinating
+through the locks.
 Quasar sets `CLUSTER_SHARED_ROOT` automatically for a single Host. A cluster on
 several Hosts needs one shared filesystem mounted at the same path on each;
 Quasar does not provision that mount. Without the shared root, the plugin fails
@@ -26,6 +37,7 @@ Important options:
 
 - Standalone storage root defaults to the Quasar data folder (`QUASAR_DATA_DIR`, derived from `QUASAR_DS_CONFIG_PATH`, or the platform default Quasar config directory). With `UseQuasarConfigFolder` off it is the server's data folder instead. Cluster storage uses the SDK shared root.
 - Minimum and maximum minutes since last backup.
+- In a cluster, the seconds to hold backups after a node start, a partition load or handover, or a grid arrival (`ClusterSettleSeconds`).
 - Backup before concealment via public plugin entrypoint.
 - Backup when steady after a configured unchanged block-count duration.
 - Backup after a configured maximum block-count change.

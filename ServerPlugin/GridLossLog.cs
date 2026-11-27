@@ -303,7 +303,7 @@ public sealed class GridLossLog : IPluginGridHandover
 
     public void Stayed(long gridId) => handingOver.Remove(gridId);
 
-    public void Arrived(long gridId, byte[] state) { }
+    public void Arrived(long gridId, byte[] state) => plugin.Backups?.Arrived(gridId);
 
     // --- storage ----------------------------------------------------------------
 

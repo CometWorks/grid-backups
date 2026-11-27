@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using PluginSdk;
 using PluginSdk.Clustering;
 using PluginSdk.Storage;
 using Sandbox.Common.ObjectBuilders;
@@ -34,6 +35,7 @@ public sealed partial class GridBackupService
     private DateTime nextScanUtc = DateTime.MinValue;
     private int runningBackups;
     private DateTime lastCleanupUtc = DateTime.MinValue;
+    private bool unloadHooked;
 
     public GridBackupService(Plugin plugin)
     {
@@ -63,21 +65,31 @@ public sealed partial class GridBackupService
         if (!Config.Enabled || MySession.Static == null)
             return;
 
+        if (!unloadHooked)
+        {
+            unloadHooked = true;
+            MySession.OnUnloading += Stop;
+            ServerControl.Terminating += _ => Stop();
+        }
+
         var now = DateTime.UtcNow;
         if (now < nextScanUtc)
             return;
 
         nextScanUtc = now.AddSeconds(Math.Max(1, Config.ScanIntervalSeconds));
-        ScanAndQueue(now);
+        if (NodeHold(now) == null)
+            ScanAndQueue(now);
     }
 
     public bool StartManualBackup()
     {
-        if (MySession.Static == null)
+        var now = DateTime.UtcNow;
+        if (MySession.Static == null || NodeHold(now) != null)
             return false;
 
         foreach (var group in EnumerateBackupGroups())
-            QueueBackup(group, BackupReason.Manual, force: true);
+            if (GridHold(group.PrimaryEntityId, now) == null)
+                QueueBackup(group, BackupReason.Manual, force: true);
 
         return true;
     }
@@ -91,6 +103,7 @@ public sealed partial class GridBackupService
             grids == null
             || grids.Count == 0
             || !AcceptsBeforeConcealment(ownerIdentity, grids.Sum(g => g.CubeBlocks?.Count ?? 0))
+            || HoldNow(grids.OrderByDescending(g => g.CubeBlocks?.Count ?? 0).First().EntityId)
         )
             return false;
 
@@ -110,7 +123,15 @@ public sealed partial class GridBackupService
         var biggest = grids?.OrderByDescending(g => g.BlocksCount).FirstOrDefault();
         return biggest != null
             && AcceptsBeforeConcealment(GetOwnerIdentityId(biggest), grids.Sum(g => g.BlocksCount))
-            && MinDelayElapsed(biggest.EntityId);
+            && MinDelayElapsed(biggest.EntityId)
+            && !HoldNow(biggest.EntityId);
+    }
+
+    // Whether the cluster holds backups of this grid right now; game thread
+    private bool HoldNow(long entityId)
+    {
+        var now = DateTime.UtcNow;
+        return NodeHold(now) != null || GridHold(entityId, now) != null;
     }
 
     // The candidate filters of the scans, for a whole group: its owner is the
@@ -141,7 +162,8 @@ public sealed partial class GridBackupService
     public string GetStatus()
     {
         lock (stateLock)
-            return $"root={BackupRoot}, tracked={states.Count}, running={runningBackups}, nextScanUtc={nextScanUtc:O}";
+            return $"root={BackupRoot}, tracked={states.Count}, running={runningBackups}, nextScanUtc={nextScanUtc:O}"
+                + (nodeHold == null ? "" : $", hold={nodeHold}");
     }
 
     private void ScanAndQueue(DateTime now)
@@ -158,6 +180,8 @@ public sealed partial class GridBackupService
             var blockCount = group.BlockCount;
             if (blockCount >= Config.MinBlocksForBackup && group.OwnerIdentityId != 0)
                 plugin.Losses?.Track(group.Grids.First(g => g.EntityId == key));
+            if (GridHold(key, now) != null)
+                continue;
 
             BackupReason reason;
             lock (stateLock)
@@ -329,6 +353,8 @@ public sealed partial class GridBackupService
                     var now = DateTime.Now;
                     // Before SaveGrid, which drops the owners unless they are kept
                     var info = DescribeBuilders(builders, DateTime.UtcNow);
+                    info.Node = NodeId;
+                    info.Reason = reason.ToString();
                     if (Config.NumberOfDailyBackupSaves > 0)
                     {
                         var dailyPath = Path.Combine(
