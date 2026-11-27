@@ -163,6 +163,12 @@ grid's last backup back in time instead of waiting for minutes to pass, reports 
 of grids, calls the public entry points, and runs chat commands as the console from a
 file, which is how the tests drive the servers that have no clients.
 
+The ownership and the holds on a real cluster (Gateway, World Authority, partitions,
+handover, drain) are tested by the cluster repository's scenario bench:
+`Test/grid_backups_scenario.py` in CometWorks/cluster (P2-GRID-BACKUPS) loads a checkout of
+this repository on a local cluster and checks the start, owner, handover and drain rules
+from each backup's side file.
+
 ### Running
 
 You need the Space Engineers client and Dedicated Server from Steam, Magnetar and Pulsar
